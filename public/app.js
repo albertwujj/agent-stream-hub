@@ -416,7 +416,7 @@
                destructive tap can't be fat-fingered from the send tap. Send
                owns the prime bottom-right thumb zone; cancel is a small, dim,
                deliberate reach on the far left. Level ring (live mic samples —
-               proof of capture) glows on the send button (VOICE_UX.md). -->
+               proof of capture) glows on the send button (voice-ux.md). -->
           <div class="voice-rec" id="voice-rec" hidden>
             <button type="button" class="rec-cancel" id="rec-cancel" aria-label="Discard recording">✕</button>
             <span class="rec-info">
@@ -801,7 +801,7 @@
     if (bar) bar.style.display = '';
   }
 
-  // ---------- voice input (VOICE_UX.md) ----------
+  // ---------- voice input (voice-ux.md) ----------
   // idle → recording (toggle; level ring proves capture) → transcribing →
   // transcript panel (held until delivered or "not delivered · agent offline")
   // | held (transcript becomes an ordinary draft in the input field)

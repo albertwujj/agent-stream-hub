@@ -118,7 +118,7 @@ All under the hub's public base URL. Bodies are JSON unless noted.
 | POST | `/runs/:runId/heartbeat` | `{ isWorking?: boolean }` | `{ inputs: string[], voiceInputs: string[], viewerAgeMs }` |
 
 `voiceInputs` are voice-origin transcripts the source prefixes with the guide
-reference before typing (see [VOICE.md](VOICE.md)); `inputs` are typed viewer
+reference before typing (see [voice.md](voice.md)); `inputs` are typed viewer
 prompts, written as-is.
 
 `viewerAgeMs` is ms since a viewer last polled this run's detail view
@@ -137,7 +137,7 @@ heartbeats, frequent snapshots) learns of a new viewer within a second or two.
 | GET | `/runs/:runId/latest` | `{ snapshot, lastSeenAt, isWorking }` or `404` |
 | GET | `/runs/:runId/history?before=<seq>&limit=<n>` | `{ entries: Entry[] }` oldest→newest |
 | POST | `/runs/:runId/input` | viewer-submitted prompt (`source:"voice"` for reviewed transcripts); drained on next heartbeat |
-| POST | `/runs/:runId/voice` | raw audio in → transcript + gate verdict; auto-queues on confidence ([VOICE.md](VOICE.md)) |
+| POST | `/runs/:runId/voice` | raw audio in → transcript + gate verdict; auto-queues on confidence ([voice.md](voice.md)) |
 | DELETE | `/runs/:runId` | `204` |
 
 ### Auth model
@@ -302,7 +302,7 @@ Boxes checked = shipped.
 - [x] **`/history` endpoint** — older snapshots paginated by `before`+`limit`.
 - [x] **Voice input, hub side** — `/runs/:id/voice`: transcribe via resident
       whisper-server, confidence-gate, queue as `voiceInputs`. Phone UX and
-      source-side injection still open — see [VOICE.md](VOICE.md).
+      source-side injection still open — see [voice.md](voice.md).
 - [ ] **Hub-side persistence** — survive daemon restart without losing rings.
       Deferred until format and schema settle.
 - [ ] **History UI in viewer** — frame-replay through `/history` results.

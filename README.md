@@ -9,9 +9,9 @@ A source pushes terminal-viewport snapshots to the hub; the hub keeps a short
 in-memory history per run and serves a viewer SPA that stitches snapshots into a
 continuous, live-updating view. Schema-agnostic relay, ~300 LOC.
 
-- **[STREAM.md](STREAM.md)** — design, data model, endpoints, auth, roadmap.
-- **[VOICE.md](VOICE.md)** — voice input: transcription on the hub, `/voice` API,
-  injection contract, gate. Phone-side states: [VOICE_UX.md](VOICE_UX.md). The
+- **[stream.md](stream.md)** — design, data model, endpoints, auth, roadmap.
+- **[voice.md](voice.md)** — voice input: transcription on the hub, `/voice` API,
+  injection contract, gate. Phone-side states: [voice-ux.md](voice-ux.md). The
   agent-facing guide lives in [voice-to-agent](https://github.com/albertwujj/voice-to-agent).
 
 ## Run locally
@@ -38,7 +38,7 @@ The hub binds to `127.0.0.1` only and keeps all state in memory.
 
 Source POSTs (`/runs`, `/snapshot`, `/heartbeat`) are always auth-open so
 locked-down source machines need no shared secret. See
-[STREAM.md](STREAM.md) for the full auth model.
+[stream.md](stream.md) for the full auth model.
 
 ## Exposing it publicly
 

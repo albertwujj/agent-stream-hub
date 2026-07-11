@@ -3,7 +3,7 @@
 Speak a command to a streamed AI-CLI session from the phone viewer; the hub
 transcribes it and the source types it into the PTY. Status: **live in production**
 (hub route + whisper daemon deployed, source drain shipped); on-device phone-mic
-testing pending. Phone-side UX: [VOICE_UX.md](./VOICE_UX.md). The agent-facing
+testing pending. Phone-side UX: [voice-ux.md](./voice-ux.md). The agent-facing
 instructions (`interpret.md`) and their rationale live in the
 [voice-to-agent](https://github.com/albertwujj/voice-to-agent) kit — vendored into
 consuming projects, referenced by the injected prompt below.
@@ -193,7 +193,7 @@ working). Plus the 200 ms fast-poll burst after any input drains, for follow-ups
 - ~~Adaptive heartbeat~~ — already existed in agent-term (2 s idle / 30 s working +
   fast-poll after inputs); no work was needed. See Delivery latency above.
 - ~~Record button + states in the viewer PWA~~ — shipped per
-  [VOICE_UX.md](./VOICE_UX.md): in-field mic, level-ring recording state,
+  [voice-ux.md](./voice-ux.md): in-field mic, level-ring recording state,
   silence hint, cap countdown, cancel, transcript chip until delivered, held →
   ordinary draft. **On-device testing (iOS Safari mic) still pending** — logic is
   static-verified only; real-mic behavior needs a phone.

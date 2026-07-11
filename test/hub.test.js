@@ -2,7 +2,7 @@
 //
 // Covers: register, snapshot push (with compaction), /latest shape,
 // /history pagination, DELETE, heartbeat isWorking flow, and the /voice
-// route against a stub whisper-server (VOICE.md).
+// route against a stub whisper-server (voice.md).
 //
 // Spawns server.js on an ephemeral PORT so the production hub (if any)
 // isn't disturbed.
@@ -84,7 +84,7 @@ function requestRaw(method, urlPath, buf) {
   });
 }
 
-// --- Voice scaffolding (VOICE.md) ---
+// --- Voice scaffolding (voice.md) ---
 
 // Stub whisper-server: each test queues the verbose_json it wants back,
 // steering the gate without real audio models.

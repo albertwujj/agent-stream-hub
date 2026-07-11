@@ -27,12 +27,12 @@ const MAX_BODY = 4 * 1024 * 1024; // 4 MiB per POST
 // never compact — they're discrete events the viewer needs to see.
 const COMPACT_TEXT_MATCH = 0.9;
 
-// Voice input (VOICE.md). URL of a running whisper-server's /inference
+// Voice input (voice.md). URL of a running whisper-server's /inference
 // endpoint. If unset, POST /runs/:id/voice returns 503 — voice is an
 // optional add-on; the hub runs fine without it.
 const WHISPER_URL = process.env.WHISPER_URL || null;
 
-// Confidence gate thresholds (VOICE.md) — whisper's stock values; calibrate
+// Confidence gate thresholds (voice.md) — whisper's stock values; calibrate
 // from utterance logs once real usage accumulates.
 const GATE_AVG_LOGPROB = -1.0; // below → low_confidence
 const GATE_NO_SPEECH = 0.6;    // above (with weak logprob) → no_speech
@@ -61,7 +61,7 @@ const MIME = {
 /**
  * Per-run state. Every ring entry is a snapshot. voiceInputs are drained
  * alongside inputs on heartbeat but kept separate so the source can prefix
- * voice-origin text with the guide reference (VOICE.md). lastViewedAt is
+ * voice-origin text with the guide reference (voice.md). lastViewedAt is
  * bumped by the detail-view endpoints (/latest, /history) and relayed to
  * the source as an age so it can pace its heartbeat by viewer presence.
  * @type {Map<string, {
@@ -154,7 +154,7 @@ async function decodeTo16kWav(audio) {
 
 // One round trip to whisper-server. temperature_inc=1.0 caps the fallback
 // ladder at a single retry — garbled audio should fail fast into the phone's
-// review path, not burn 3–8s re-decoding (VOICE.md).
+// review path, not burn 3–8s re-decoding (voice.md).
 async function transcribe(wav) {
   const form = new FormData();
   form.append('file', new Blob([wav], { type: 'audio/wav' }), 'audio.wav');
@@ -350,7 +350,7 @@ async function handle(req, res) {
 
     // POST /runs/:id/input — viewer-submitted prompt; drained on next heartbeat.
     // source:"voice" marks a reviewed/edited transcript — still a transcript,
-    // so the source gives it the guide framing (VOICE.md).
+    // so the source gives it the guide framing (voice.md).
     if (req.method === 'POST' && rest === 'input') {
       const r = runs.get(runId);
       if (!r) return notFound(res);
@@ -364,7 +364,7 @@ async function handle(req, res) {
 
     // POST /runs/:id/voice — raw audio in (any MediaRecorder container),
     // transcript + gate verdict out; auto-queues on confidence. Contract:
-    // VOICE.md. Synchronous: transcribe + gate + queue in one round trip.
+    // voice.md. Synchronous: transcribe + gate + queue in one round trip.
     if (req.method === 'POST' && rest === 'voice') {
       const r = runs.get(runId);
       if (!r) return notFound(res);
