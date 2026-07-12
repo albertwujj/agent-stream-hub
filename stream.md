@@ -315,6 +315,13 @@ Boxes checked = shipped.
 
 ## Locked decisions (don't relitigate without good reason)
 
+- The iOS/iPadOS home-screen icon (`public/icon-180.png`) intentionally keeps
+  the original terminal artwork at 108×108 (60%), anchored top-left on an
+  opaque-white 180×180 canvas. The asymmetric field makes the black tile read
+  as a terminal pane opening into the larger viewer; its smaller prompt mark
+  and breathing room tested better than an optically enlarged 62% redraw. Do
+  not crop, upscale, center, or round the inner pane, and do not make it match
+  the deliberately full-bleed `public/icon.svg` browser/favicon variant.
 - Snapshot-based protocol, no blocks, no markers/dividers. Viewer stitches.
 - One agent-term process = one run = one `runId`. Resume = new run + new tile.
 - Hub keeps last 24h of activity (`EVICT_MS`). User deletes stale tiles
