@@ -1,0 +1,13 @@
+{
+  "name": "agent-stream",
+  "short_name": "agent-stream",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0c0c0c",
+  "theme_color": "#0c0c0c",
+  "start_url": "/",
+  "icons": [
+    { "src": "/icon-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

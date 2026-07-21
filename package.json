@@ -1,0 +1,13 @@
+{
+  "name": "agent-stream-hub",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Streaming hub for agent-term sessions",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

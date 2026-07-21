@@ -1,0 +1,14 @@
+node_modules/
+*.log
+.DS_Store
+.idea/
+.vscode/
+
+# STREAM_URL.md records the private named-tunnel URL and lives ONLY in the
+# deploy dir (this repo is the public subset; deployment specifics are kept
+# separate — see STREAM.md "Locked decisions"). Deploys copy files public→
+# deploy; this guards the reverse — an accidental deploy→public copy can't
+# stage the domain into the public repo. Other deploy-only files (SETUP.md,
+# scripts/, worker/) are intentionally NOT ignored: they carry no secret and
+# may be published redacted later; ignoring them would silently block that.
+STREAM_URL.md

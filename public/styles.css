@@ -1,0 +1,818 @@
+/* agent-stream viewer styles. Dark, monospace, low chrome. Matches
+   agent-term's terminal palette so blocks render with comparable fidelity. */
+
+:root {
+  --bg: #0c0c0c;
+  --bg-elev: #181818;
+  --bg-elev-2: #1f1f1f;
+  --border: #2a2a2a;
+  --border-hover: #4a4a4a;
+  --fg: #cccccc;
+  --fg-dim: #909090;
+  --fg-dimmer: #777;
+  --green: #a3d977;
+  --yellow: #c19c00;
+  --red: #e74856;
+  --cyan: #61d6d6;
+  /* Match agent-term's renderer.js font stack so the viewer renders the
+     same glyphs the user sees in the source terminal. */
+  --mono: "Cascadia Mono", "Cascadia Code", Consolas, "SF Mono", Menlo, "Courier New", ui-monospace, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--sans);
+  font-size: 14px;
+  overscroll-behavior: none;
+}
+
+a { color: inherit; text-decoration: none; }
+
+#app { display: flex; flex-direction: column; height: 100%; }
+
+/* ---------- topbar ---------- */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--bg-elev);
+  /* No border-bottom — the hue divider sibling element draws its own line. */
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  flex-shrink: 0;
+}
+.topbar .brand {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.topbar .back {
+  color: var(--fg-dim);
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.topbar .back:hover { background: var(--bg-elev-2); color: var(--fg); }
+.topbar .run-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.topbar .pill {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--bg-elev-2);
+  color: var(--fg-dim);
+  flex-shrink: 0;
+}
+/* 1px hue divider directly below the topbar — picks up the session's
+   identity color via --hue (set per-run from meta.hue). Falls back to
+   the neutral border tone when no hue is available. Matches agent-term's
+   chrome-bar hue divider. */
+.hue-divider {
+  height: 1px;
+  background: var(--hue, var(--border));
+  flex-shrink: 0;
+}
+
+/* Pill colors — one per unified card kind. */
+.topbar .pill.working   { background: var(--green); color: var(--bg); }
+.topbar .pill.your_turn { background: var(--cyan); color: var(--bg); }
+.topbar .pill.idle      { background: var(--yellow); color: var(--bg); }
+.topbar .pill.stale     { background: var(--bg-elev-2); color: var(--fg-dim); }
+.topbar .pill.unknown   { background: var(--bg-elev-2); color: var(--fg-dimmer); }
+.topbar .pill.sealed    { background: var(--bg-elev-2); color: var(--fg-dim); }
+.topbar .pill.gone      { background: var(--red); color: var(--bg); }
+
+/* Heartbeat dot — list cards. Tooltip carries the human-readable detail. */
+.hb-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--fg-dimmer);
+  flex-shrink: 0;
+  align-self: center;
+}
+.hb-dot.working   { background: var(--green); }
+.hb-dot.your_turn { background: var(--cyan); }
+.hb-dot.idle      { background: var(--yellow); }
+.hb-dot.stale     { background: var(--fg-dimmer); }
+.hb-dot.unknown   { background: transparent; border: 1px dashed var(--fg-dimmer); width: 6px; height: 6px; }
+
+/* Working — calm breath. Ambient indicator that lingers for minutes. */
+.hb-dot.working,
+.pill.hb-pill.working { animation: hb-pulse 2.4s ease-in-out infinite; }
+@keyframes hb-pulse {
+  0%,  100% { opacity: 1; }
+  50%       { opacity: 0.55; }
+}
+
+/* ---------- list view ---------- */
+.list {
+  padding: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+/* Wraps each run-card so the per-card delete + group-drill affordances
+   can position relative to it without breaking the card's own link. */
+.run-card-wrap { position: relative; }
+.run-card {
+  position: relative;
+  display: block;
+  padding: 14px 14px 14px 18px;
+  background: var(--bg-elev);
+  border-radius: 8px;
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+/* De-emphasize stale tiles in the list. */
+.run-card.stale,
+.run-card.unknown { opacity: 0.55; }
+.run-card.stale:hover,
+.run-card.unknown:hover { opacity: 0.85; }
+/* "+N more" drill-in badge — shown when a (host, title) group has more
+   than one stream. Clicks navigate to the group's detail list. */
+.group-drill {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--bg-elev-2);
+  color: var(--fg-dim);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.group-drill:hover { color: var(--fg); border-color: var(--border-hover); }
+/* Delete affordance — only visible on hover/focus of the wrap. */
+.run-delete {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  width: 22px; height: 22px;
+  padding: 0;
+  font-size: 14px;
+  line-height: 20px;
+  background: var(--bg-elev-2);
+  color: var(--fg-dim);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.run-card-wrap:hover .run-delete,
+.run-delete:focus { opacity: 1; }
+.run-delete:hover { color: var(--red); border-color: var(--red); }
+.run-delete:disabled { opacity: 0.5; cursor: default; }
+/* Hue stripe as a standalone inset pill — ignores the card's 8px corner
+   radius so it stays a clean rectangle instead of tapering into the
+   corners the way a border-left would. */
+.run-card::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 14px;
+  bottom: 14px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--card-hue, var(--border));
+}
+.run-card:hover {
+  transform: translateY(-1px);
+  background: var(--bg-elev-2);
+}
+
+/* "Your turn" treatment — a solid terminal block cursor in the meta
+   row's leading slot. Same metaphor a modern terminal uses to signal
+   "ready for input." No blink (most modern terminals stopped blinking
+   years ago), terminal foreground color so it reads as a cursor rather
+   than a state-colored marker. The shape alone — block vs dot — is
+   enough to distinguish from working/idle/stale. */
+.term-cursor {
+  display: inline-block;
+  width: 7px;
+  height: 12px;
+  background: var(--fg);
+  flex-shrink: 0;
+  align-self: center;
+}
+
+/* ---------- machine cards (top-level landing) ----------
+   Machines aggregate runs; no per-card hue stripe (the runs inside
+   each have their own session hues). Minimal info: name, your_turn
+   count + oldest-pending age (only when there's something to attend
+   to), and a single heartbeat dot + last-seen timestamp. */
+.machine-card {
+  display: block;
+  padding: 16px;
+  background: var(--bg-elev);
+  border-radius: 8px;
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+.machine-card:hover {
+  transform: translateY(-1px);
+  background: var(--bg-elev-2);
+}
+.machine-name {
+  font-family: var(--mono);
+  font-size: 15px;
+  color: var(--fg);
+  word-break: break-all;
+}
+.machine-yourturn {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--fg);
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.machine-yourturn-count {
+  display: inline-block;
+  min-width: 22px;
+  padding: 0 7px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--cyan);
+  border: 1px solid var(--cyan);
+  border-radius: 3px;
+  text-align: center;
+}
+.machine-footer {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--fg-dimmer);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.run-card .cli {
+  font-size: 11px;
+  color: var(--fg-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+.run-card .title {
+  font-family: var(--mono);
+  font-size: 14px;
+  line-height: 1.35;
+  max-height: 2.7em;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.run-card .meta {
+  font-size: 12px;
+  color: var(--fg-dimmer);
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+}
+
+.empty {
+  padding: 64px 16px;
+  text-align: center;
+  color: var(--fg-dim);
+}
+
+/* ---------- detail view ---------- */
+.grid {
+  font-family: var(--mono);
+  font-size: 15px;
+  line-height: 17px;
+  padding: 6px 12px 24px;
+  overflow: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.grid-row {
+  white-space: pre;
+  margin: 0;
+  padding: 0;
+  height: 17px;
+  letter-spacing: 0;
+  /* Size each row to its content (but at least full width) so the grid's
+     scrollWidth exceeds its clientWidth — otherwise wide TUI lines just
+     clip with no horizontal scroll to grab (invisible on desktop, where
+     80 cols fit; very visible on a phone). */
+  width: max-content;
+  min-width: 100%;
+}
+.grid-row.empty { color: transparent; }
+
+/* grid is now a flat stream of items (rows + dividers + gaps) — no
+   block sections, no per-block headers. Stitcher merges all snapshots
+   into one buffer per run. */
+
+/* Stream markers — minimum visual weight by design. The goal is "natural
+   section division you can find when looking, invisible while reading".
+   All three render as a thin horizontal line; hover-tooltip carries the
+   label. Variants differ only by border style/color so a careful eye can
+   distinguish them, but neither needs to.
+   - stitch  : solid grey hairline (normal alignment boundary, frequent)
+   - gap     : dashed grey hairline (snapshots disjoint, both kept)
+   - dropped : solid yellow hairline (previous viewport discarded) */
+/* Stream markers are HIDDEN by default — they were distracting. The
+   user can toggle them via the topbar "markers" button (state persisted
+   to localStorage). When revealed, STITCH is a faint solid grey line,
+   BREAK is a slightly more visible dashed yellow line. */
+.stream-marker { display: none; }
+body.show-markers .stream-marker {
+  display: block;
+  margin: 4px 0;
+  cursor: help;
+  transition: opacity 0.15s ease;
+}
+body.show-markers .stream-marker:hover { opacity: 1 !important; }
+body.show-markers .stream-marker.mk-stitch {
+  height: 1px;
+  border-top: 1px solid var(--border-hover);
+  opacity: 0.5;
+}
+body.show-markers .stream-marker.mk-break {
+  height: 1px;
+  border-top: 1px dashed var(--yellow);
+  opacity: 0.8;
+}
+
+/* Topbar toggle for the markers — small, low-emphasis pill. */
+.markers-toggle {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 8px;
+  background: transparent;
+  color: var(--fg-dimmer);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.markers-toggle:hover { color: var(--fg-dim); border-color: var(--border-hover); }
+body.show-markers .markers-toggle {
+  color: var(--fg);
+  border-color: var(--fg-dim);
+  background: var(--bg-elev-2);
+}
+
+
+/* "Load earlier" affordance at the top of the stack. Single tap to fetch
+   /history; once loaded, the button removes itself. */
+.load-earlier {
+  display: block;
+  margin: 12px auto;
+  padding: 8px 16px;
+  font-family: var(--sans);
+  font-size: 13px;
+  background: var(--bg-elev);
+  color: var(--fg-dim);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.load-earlier:hover:not(:disabled) {
+  background: var(--bg-elev-2);
+  color: var(--fg);
+  border-color: var(--border-hover);
+}
+.load-earlier:disabled { opacity: 0.6; cursor: default; }
+
+/* Floating "↓ Latest" button — appears when the user scrolled away from
+   the live block's tail. Clicking jumps back to the bottom of the grid. */
+.latest-fab {
+  position: absolute;
+  right: 8px;
+  bottom: calc(100% + 8px);   /* float just above the input bar's top edge */
+  z-index: 9;
+  padding: 8px 14px;
+  font-family: var(--sans);
+  font-size: 13px;
+  background: var(--cyan);
+  color: var(--bg);
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+.latest-fab:hover { filter: brightness(1.1); }
+.latest-fab[hidden] { display: none; }
+
+.dim-banner {
+  padding: 12px 16px;
+  background: var(--bg-elev);
+  color: var(--fg-dim);
+  font-size: 12px;
+  border-top: 1px solid var(--border);
+  text-align: center;
+}
+
+/* Sticky input bar — always visible. The user can queue a prompt any
+   time; the source drains it on its next heartbeat. The bar itself is
+   visually neutral regardless of state — only the Send button's color
+   reflects whether the source is currently `your_turn` (cyan = ready)
+   or busy (muted = will be queued). */
+.input-bar {
+  position: relative;   /* positioning context for the anchored .latest-fab */
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg-elev);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.input-bar-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 10px;
+  font-family: var(--mono);
+  font-size: 14px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  outline: none;
+}
+.input-bar-text:focus { border-color: var(--border-hover); }
+
+/* ---------- voice input (VOICE_UX.md) ---------- */
+/* These elements toggle via the `hidden` attribute, but explicit `display`
+   rules below would override the UA's [hidden]{display:none} — restore it. */
+.input-wrap[hidden], .voice-rec[hidden], .voice-mic[hidden], .voice-chip[hidden] {
+  display: none !important;
+}
+.input-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.input-wrap .input-bar-text { flex: 1 1 auto; }
+/* Voice is the primary input method — a keycap-class target next to the
+   field, not a glyph inside it. Disabled (draft owns the field) dims. */
+.voice-mic {
+  flex: 0 0 auto;
+  min-width: 44px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elev-2);
+  color: var(--fg-dim);
+  cursor: pointer;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.voice-mic:active { background: var(--bg); color: var(--fg); }
+.voice-mic:disabled { opacity: 0.35; cursor: default; }
+/* Phone: the mic lives in the touch-key row (the big key, prime thumb
+   spot); hide the field-side keycap there. Desktop has no key row, so the
+   field-side keycap serves it. */
+.tkey-mic:disabled { opacity: 0.35; }
+.tkey-mic[hidden] { display: none !important; }
+@media (pointer: coarse) {
+  .voice-mic { display: none !important; }
+}
+
+/* Recording row — replaces the input while recording. Cancel (far left,
+   dim) and send (far right, prime thumb zone) are pushed to opposite ends;
+   the flex-growing info span (dot/timer/hint) between them is the physical
+   buffer that stops a send tap from landing on cancel. */
+.voice-rec {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+/* Cancel: small, dim, far left — a deliberate reach out of the send path,
+   not a keycap crowding the primary action. */
+.rec-cancel {
+  flex: 0 0 auto;
+  min-width: 34px;
+  padding: 8px 4px;
+  border: none;
+  background: transparent;
+  color: var(--fg-dimmer);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.rec-cancel:active { color: var(--fg); }
+/* Info span: non-interactive; flex-grows to fill the middle, which is the
+   buffer keeping cancel and send apart. */
+.rec-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: 14px;
+  color: var(--fg);
+  overflow: hidden;
+}
+.rec-dot {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--red);
+  animation: status-pulse 1s ease-in-out infinite;
+}
+.rec-time { flex: 0 0 auto; }
+.rec-time.warn { color: var(--yellow); }
+.rec-hint {
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--yellow);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Send: prime bottom-right thumb zone, prominent (neutral, not red — red is
+   the dot/level, not the primary action). Level ring glows via --lvl. */
+.rec-send {
+  flex: 0 0 auto;
+  padding: 10px 20px;
+  font-family: var(--mono);
+  font-size: 14px;
+  color: var(--fg);
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border-hover);
+  border-radius: 6px;
+  cursor: pointer;
+  box-shadow: 0 0 0 calc(var(--lvl, 0) * 8px)
+              color-mix(in oklab, var(--red) 20%, transparent);
+  transition: box-shadow 0.1s linear;
+}
+.rec-send:active { background: var(--bg); }
+
+/* Transcript panel above the bar: the transcript briefly outranks the
+   terminal — full wrapped text at reading size, small pulsing status row
+   ("transcribing…" / "sending…") until the delivery proof (then the
+   injected line is visible in the terminal and the panel hands off);
+   notices auto-fade. */
+.voice-chip {
+  background: var(--bg-elev);
+  border-top: 1px solid var(--border);
+  padding: 10px 12px;
+  flex-shrink: 0;
+}
+.voice-chip-text {
+  font-family: var(--mono);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--fg);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 7.5em;      /* ~5 lines, then internal scroll */
+  overflow-y: auto;
+}
+.voice-chip-status {
+  font-family: var(--sans);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fg-dim);
+}
+.voice-chip-text:not([hidden]) + .voice-chip-status:not([hidden]) { margin-top: 6px; }
+.voice-chip.sending .voice-chip-status {
+  color: var(--cyan);
+  animation: status-pulse 1.4s ease-in-out infinite;
+}
+/* Escape route: while an input is frozen, the feedback is tap-to-dismiss.
+   The hint shows on the held voice transcript (not the transcribing pulse). */
+body.input-pending .voice-chip { cursor: pointer; }
+body.input-pending .voice-chip:not(.sending)::after {
+  content: 'tap to dismiss';
+  display: block;
+  margin-top: 6px;
+  font-family: var(--sans);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  color: var(--fg-dim);
+  opacity: 0.7;
+}
+body.input-pending .input-bar-text.pending { cursor: pointer; }
+/* #key-log is a hidden state hook only (the batch's visible feedback is the
+   count badge on ↓); it never renders. Kept in the DOM so renderBatchLog has a
+   stable node to write into without a null check. */
+.key-log { display: none !important; }
+
+/* Pulse for transient/in-flight states — used by the recording dot and the
+   voice chip's "sending…" status. (The old typed-input status pill was
+   removed with the fire-and-forget input change; keyframes retained.) */
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.4; }
+}
+
+/* ---------- inline styles applied by app.js for cells ---------- */
+.b { font-weight: bold; }
+.i { font-style: italic; }
+.u { text-decoration: underline; }
+.s { text-decoration: line-through; }
+.us { text-decoration: underline line-through; }
+.dm { opacity: 0.6; }
+
+/* ---------- touch keys ----------
+   One compact control row on phones ([🎙/✕] [↓] [^C] [⋯/send]); hidden on
+   desktop (the keyboard-capture path drives pickers there). Revealed in the
+   phone layout below as thumb-sized keycaps. */
+.main-keys { display: none; }
+.tkey {
+  font-family: var(--mono);
+  font-size: 17px;
+  color: var(--fg);
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  min-height: 44px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;   /* no 300ms tap delay / double-tap zoom */
+}
+.tkey:active {
+  background: var(--border);
+  border-color: var(--border-hover);
+  transform: translateY(1px);
+}
+/* An immediate control key (esc/⇧tab/^C) isn't shown in the batch preview, so
+   it flashes when it fires — brief bright pulse, then fades back. */
+@keyframes key-flash {
+  0%   { background: color-mix(in oklab, var(--fg) 28%, var(--bg-elev-2)); border-color: var(--border-hover); }
+  100% { background: var(--bg-elev-2); border-color: var(--border); }
+}
+.tkey.sent-flash { animation: key-flash 0.4s ease-out; }
+.tkey-go {
+  color: var(--cyan);
+  border-color: color-mix(in oklab, var(--cyan) 40%, var(--border));
+  font-size: 19px;
+}
+.tkey-go:active { background: color-mix(in oklab, var(--cyan) 18%, var(--bg-elev-2)); }
+/* Interrupt (^C) — subtly red so it reads as "stop" without shouting; sits at
+   the nav row's edge (see markup) to resist accidental taps. */
+.tkey-int { color: color-mix(in oklab, var(--red) 75%, var(--fg)); }
+.tkey-int:active { background: color-mix(in oklab, var(--red) 16%, var(--bg-elev-2)); }
+.tkey:disabled { opacity: 0.32; }
+/* Overflow trigger (⋯) — quiet; a flat glyph, no chrome distinction. */
+.tkey-more { color: var(--fg-dim); }
+/* Abort the composed batch — a quiet ✕ in the mic's (far-left) slot while
+   composing, out of the send path. Revealed by body.composing (below). */
+.tkey-abort { color: var(--fg-dim); }
+.tkey-abort:active { color: var(--fg); }
+/* State swaps (phone only — main-keys is display:none on desktop). Idle shows
+   [🎙][↓][^C][⋯]; composing swaps 🎙→✕ and ⋯→send, keeping the ↓/^C slots put. */
+.tkey-abort, .tkey-go { display: none; }
+body.composing .tkey-mic,
+body.composing .tkey-more { display: none; }
+body.composing .tkey-abort,
+body.composing .tkey-go { display: inline-flex; }
+/* Batch count badge on ↓ — tiny cyan pip, top-right of the key. */
+.tkey-down { position: relative; }
+.key-badge {
+  position: absolute;
+  top: 3px;
+  right: 5px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: var(--cyan);
+  color: var(--bg);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+}
+.key-badge[hidden] { display: none !important; }
+/* Overflow menu (⋯): Type / esc / ⇧tab, floating above the bar's right edge. */
+.overflow-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: calc(12px + env(safe-area-inset-right));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  z-index: 10;
+}
+.overflow-menu[hidden] { display: none !important; }
+.ov-key { min-width: 120px; justify-content: flex-start; gap: 8px; font-size: 16px; }
+/* Frozen while an input is in flight: the control row dims and stops taking
+   taps (the JS guards block it too; this is the visible cue). */
+body.input-pending .main-keys { opacity: 0.5; pointer-events: none; }
+
+/* ---------- phone layout ----------
+   Touch devices up to phone-landscape width (so it survives rotation; an
+   iPhone 15 Pro Max landscape is 932px). Desktop (pointer:fine) never
+   matches, so the desktop UX is untouched. */
+@media (pointer: coarse) and (max-width: 932px) {
+  /* Safe areas — content clears the notch/Dynamic Island + home indicator. */
+  .topbar {
+    padding-top: calc(8px + env(safe-area-inset-top));
+    padding-left: calc(12px + env(safe-area-inset-left));
+    padding-right: calc(12px + env(safe-area-inset-right));
+  }
+  .grid {
+    font-size: 14px;
+    padding-left: calc(10px + env(safe-area-inset-left));
+    padding-right: calc(10px + env(safe-area-inset-right));
+    -webkit-overflow-scrolling: touch;   /* momentum horizontal scroll for wide TUIs */
+  }
+
+  /* Diagnostic toggle has no place on a phone. */
+  .markers-toggle { display: none; }
+
+  /* Bigger back-button tap target. */
+  .topbar .back { font-size: 20px; padding: 6px 10px; }
+
+  /* Input bar: text row wraps above a full-width row of touch keys. The bar's
+     panel color hugs the keys; the home-indicator safe area below is a MARGIN
+     (not padding), so it shows the page's system-black rather than the bar's
+     lighter panel — no app-owned band under the keys. */
+  .input-bar {
+    flex-wrap: wrap;
+    align-items: center;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    padding-left: calc(12px + env(safe-area-inset-left));
+    padding-right: calc(12px + env(safe-area-inset-right));
+    margin-bottom: env(safe-area-inset-bottom);
+  }
+  /* The field is a full-width panel that only appears when you tap Type (in
+     the overflow) — it docks to the keyboard. Idle, the control row owns the
+     bar instead. 16px so iOS doesn't auto-zoom on focus. */
+  .input-wrap {
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0 12px;
+    background: var(--bg-elev-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .input-bar-text {
+    font-size: 16px;
+    padding: 0;
+    min-height: 0;
+    background: transparent;
+    border: none;
+    color: var(--fg);
+  }
+
+  /* One row. The control row (main-keys) owns the bar when idle; the field
+     (kbd-active) and the recording surface each replace it full-width when
+     active. Only one of the three is displayed at a time, so all claim the
+     full width and none wrap. */
+  .input-wrap { display: none; order: 1; flex: 1 1 100%; min-width: 0; }
+  .voice-rec  { order: 1; flex: 1 1 100%; min-width: 0; }
+  body.kbd-active .input-wrap { display: flex; }
+
+  .main-keys {
+    display: flex;
+    gap: 8px;
+    order: 1;
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .tkey { flex: 1 1 0; min-width: 0; padding: 0 6px; }
+  .tkey-mic, .tkey-abort { flex: 1.4 1 0; }   /* voice slot a touch wider */
+  /* Typing (keyboard up) or recording: the field / rec surface fills the row;
+     the control keys hide. */
+  body.kbd-active .main-keys,
+  body.recording .main-keys { display: none; }
+}
