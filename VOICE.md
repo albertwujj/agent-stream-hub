@@ -4,7 +4,7 @@ Speak a command to a streamed AI-CLI session from the phone viewer; the hub
 transcribes it and the source types it into the PTY. Status: **live in production**
 (hub route + whisper daemon deployed, source drain shipped); on-device phone-mic
 testing pending. Phone-side UX: [VOICE_UX.md](./VOICE_UX.md). The agent-facing
-instructions (`interpret.md`) and their rationale live in the
+instructions (`interpretation-guide.md`) and their rationale live in the
 [voice-to-agent](https://github.com/albertwujj/voice-to-agent) kit — vendored into
 consuming projects, referenced by the injected prompt below.
 
@@ -20,7 +20,7 @@ hub: whisper.cpp large-v3-turbo (warm)  →  transcript + confidence
    │        │ no
    ▼
    queue voice-tagged  →  source drains on heartbeat  →  agent CLI receives:
-   [@voice-to-agent/interpret.md]
+   User input transcript — find voice-to-agent/interpretation-guide.md and follow it:
    <raw transcript>
 ```
 
@@ -142,32 +142,26 @@ prompt to an AI CLI, so a raw shell never has a run to voice into.
 
 ## Injection (source, agent-term)
 
-Per voice-origin input the source injects the reference line, then the transcript on
+Per voice-origin input the source injects a header line, then the transcript on
 its own line (agent-term's convention for injected prompts; delivered via
 bracketed paste so the newline doesn't submit early):
 
 ```
-[@voice-to-agent/interpret.md]
+User input transcript — find voice-to-agent/interpretation-guide.md and follow it:
 <raw transcript>
 ```
 
-- **Verb filename, `@`-referenced — the reference is the action.** `interpret.md`,
-  referenced bare, *is* the instruction ("interpret this"); no surrounding imperative is
-  needed. `@` is the file-reference gesture a user makes via a CLI's picker, so the model
-  reads it as "read this file and act."
-- **Folder-qualified, no path.** The source holds one constant; the kit repo is vendored
-  with its folder name kept, anywhere in the tree. The folder is the namespace (a bare
-  filename could collide with a project's own docs); the agent locates it by
-  interpretation, not fixed-path resolution.
-- **`[…]` marks it meta.** A bracketed line is envelope, not content — parallel to the
-  `[… from terminal host]` prefix on the host's own injections into this stream; the
-  transcript is what follows on the next line.
-- **Every time, no state.** No primed flag, no compaction detection — the agent locates
-  the guide, remembers it, and re-reads only if it was compacted out of context. When the
-  guide can't be read, the verb in the reference still names the action, though the
-  dictation framing and repair rules (guide-only) are lost.
+- **Folder-qualified name, no path.** The source holds one constant; the kit repo is
+  vendored with its folder name kept, anywhere in the tree. The folder is the
+  namespace (a bare filename could collide with a project's own docs).
+- **Every time, no state.** No primed flag, no compaction detection — the agent
+  globs, remembers, and re-reads only if the guide was compacted out of its context.
+- **Graceful when absent.** The "User input transcript —" label alone tells the agent
+  it's the user's dictated request (parallel to the `[… from terminal host]` prefix on
+  the host's own injections into this stream); the guide sharpens, it is not a hard
+  dependency.
 
-Prompt/reference co-design rationale: `voice-to-agent/.maintainer/`.
+Prompt/filename co-design rationale: `voice-to-agent/.maintainer/`.
 
 ## Delivery latency
 
@@ -194,7 +188,8 @@ working). Plus the 200 ms fast-poll burst after any input drains, for follow-ups
   fast-poll after inputs); no work was needed. See Delivery latency above.
 - ~~Record button + states in the viewer PWA~~ — shipped per
   [VOICE_UX.md](./VOICE_UX.md): in-field mic, level-ring recording state,
-  silence hint, cap countdown, cancel, transcript chip until delivered, held →
+  silence hint, cap countdown, cancel, transcript panel (`sent` until the hub
+  queue drains, min-dwell, `not delivered · agent offline` on stale), held →
   ordinary draft. **On-device testing (iOS Safari mic) still pending** — logic is
   static-verified only; real-mic behavior needs a phone.
 - ~~`whisper-server` supervised on the mini~~ — deployed: `~/whisper-server/` +

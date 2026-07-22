@@ -1,11 +1,13 @@
 # Voice input — phone UX
 
-Voice is the **primary input method**. On phones the mic is the **biggest key
-in the touch-key row** (`↑ ↓ esc ⇧tab 🎙 ↵`) — the thumb's home row, sized above
-the send key; on desktop (no key row) it's a keycap-class button next to the
-field. Always visible while idle; **dimmed-disabled** when a draft (typed or
-held transcript) owns the field, keeping the no-recording-over-a-draft rule
-visible instead of vanishing. The text field stays *above* the key row: the
+Voice is the **primary input method**. On phones the mic is the **biggest key**:
+it owns a **full-width commit row** of its own, below a compact nav row
+(`↑ ↓ esc ⇧tab ^C`) and above nothing — thumb-home at the bottom edge, labelled
+`🎙 Speak`. The `↵` confirm joins it on that commit row once picker navigation
+begins (empty while just replying — the keyboard's own return sends). On desktop
+(no key rows) the mic is a keycap-class button next to the field. Always visible
+while idle; **dimmed-disabled** when a draft (typed or held transcript) owns the
+field, keeping the no-recording-over-a-draft rule visible instead of vanishing. The text field stays *above* the key row: the
 bottom edge belongs to the most-frequent controls, and while actually typing
 the key row hides anyway (`kbd-active`) so the field docks to the keyboard. No gesture conflict: long-press on the text field keeps its
 native iOS meaning (cursor placement, paste), which the held-transcript editing
@@ -17,18 +19,15 @@ display.
 ## States
 
 ```
-idle ──tap──► recording ────────tap (= send)──► transcribing ──► resolved
- 🎙            ✕   ● 0:07        [ tap to send ]   panel: "transcribing…"
-               └cancel  └info (buffer)  └send
+idle ──tap──► recording ──────tap (= send)──► transcribing ──► resolved
+ 🎙            [● 0:07 · tap to send    ] ✕     panel: "transcribing…"
 ```
 
-Cancel and send sit at **opposite ends** of the row, with the non-interactive
-dot/timer/hint span between them as a physical buffer — so the destructive tap
-can't be fat-fingered from the send tap (they were adjacent before, which felt
-unsafe). Send owns the prime bottom-right thumb zone and is prominent (neutral,
-not red); cancel is a small, dim, deliberate reach on the far left. The live
-level ring (proof of capture) glows on the send button. Red appears only on the
-recording dot and that faint ring — never on the send button itself.
+The recording state is one calm surface: the whole row is the tap-to-send
+button, all text at the input field's type scale, red exactly once (the dot),
+the live level ring glowing on the row border. Cancel is a separate keycap so
+it can't be fat-fingered into send. (One action → one visual scale; size
+contrast implies hierarchy, and there is none here.)
 
 ## Recording feedback — prove capture, don't assert it
 
@@ -62,7 +61,7 @@ waveform history, no audio chimes.
 
 | Response | Phone behavior |
 |---|---|
-| `sent: true` | Transcript **panel** above the input bar: the full wrapped transcript at reading size (cap ~5 lines, then internal scroll), shown the instant the response lands — it's your only look at what was heard (no live partial), so it appears immediately with **no delivery label**. It's one input in flight: the mic + input stay **frozen** (dimmed) while it's queued, and it holds until the hub queue drains (`pendingInputs → 0` — the source pulled it, the only reliable ack), never less than a min dwell (~2.5 s) so it stays readable, then fades and re-enables input. No "delivered" / "offline" status: a stuck input just stays blocked (the topbar heartbeat pill shows run liveness), and a changed frame isn't proof the line landed — the drain is. Typed prompts and composed key-batches serialize the same way. |
+| `sent: true` | Transcript **panel** above the input bar: the full wrapped transcript at reading size (cap ~5 lines, then internal scroll), shown the instant the response lands — it's your only look at what was heard (no live partial). A small `sent` status rides beneath it: `sent` = the hub has it (`sent: true`), the same word the field pill uses for a typed send. The panel holds until the hub queue drains (`pendingInputs → 0` — the source pulled it, the reliable ack; the injected line is then in the terminal stream itself), but **never less than a min dwell** (~2.5 s) so the transcript stays readable even when delivery is instant, then fades. Covers the heartbeat gap (up to ~30 s if the agent was mid-task). If the run goes stale before the queue drains → `not delivered · agent offline`. No snapshot-diff "delivered" — a changed frame isn't proof the line landed; the drain is. Status rides the panel, not the pill: no double indicator. |
 | `sent: false`, `holdReason: "low_confidence"` | `transcript` lands in the input bar as an ordinary draft — editable only because the field already is (no auto-focus, no keyboard pop, no special state). Sending it is a plain typed send: a user-reviewed transcript ≈ typed text, so no `source:"voice"` tagging in the viewer (hub + source support for the tag exists for future clients). |
 | `sent: false`, `holdReason: "no_speech"` | Brief "didn't catch that" notice. Input bar untouched (the transcript may be hallucinated — never surface it). |
 | Error (`400`/`404`/`503`, network) | Brief "voice unavailable" notice. Recording is discarded. |

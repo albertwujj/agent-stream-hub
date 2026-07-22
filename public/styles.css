@@ -403,9 +403,9 @@ body.show-markers .markers-toggle {
 /* Floating "↓ Latest" button — appears when the user scrolled away from
    the live block's tail. Clicking jumps back to the bottom of the grid. */
 .latest-fab {
-  position: absolute;
-  right: 8px;
-  bottom: calc(100% + 8px);   /* float just above the input bar's top edge */
+  position: fixed;
+  right: 16px;
+  bottom: 72px;       /* sit above the input bar (when visible) */
   z-index: 9;
   padding: 8px 14px;
   font-family: var(--sans);
@@ -435,7 +435,6 @@ body.show-markers .markers-toggle {
    reflects whether the source is currently `your_turn` (cyan = ready)
    or busy (muted = will be queued). */
 .input-bar {
-  position: relative;   /* positioning context for the anchored .latest-fab */
   display: flex;
   gap: 8px;
   padding: 10px 12px;
@@ -456,6 +455,7 @@ body.show-markers .markers-toggle {
   outline: none;
 }
 .input-bar-text:focus { border-color: var(--border-hover); }
+.input-bar-text.pending { border-color: var(--yellow); opacity: 0.7; }
 
 /* ---------- voice input (VOICE_UX.md) ---------- */
 /* These elements toggle via the `hidden` attribute, but explicit `display`
@@ -467,8 +467,6 @@ body.show-markers .markers-toggle {
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
-  align-items: center;
-  gap: 8px;
 }
 .input-wrap .input-bar-text { flex: 1 1 auto; }
 /* Voice is the primary input method — a keycap-class target next to the
@@ -497,44 +495,36 @@ body.show-markers .markers-toggle {
   .voice-mic { display: none !important; }
 }
 
-/* Recording row — replaces the input while recording. Cancel (far left,
-   dim) and send (far right, prime thumb zone) are pushed to opposite ends;
-   the flex-growing info span (dot/timer/hint) between them is the physical
-   buffer that stops a send tap from landing on cancel. */
+/* Recording row — replaces the input while recording. One calm surface:
+   the whole row is the tap-to-send button, all text at the input field's
+   scale, red exactly once (the dot). The level ring (live mic samples —
+   proof of capture) glows on the row border via --lvl. */
 .voice-rec {
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
-/* Cancel: small, dim, far left — a deliberate reach out of the send path,
-   not a keycap crowding the primary action. */
-.rec-cancel {
-  flex: 0 0 auto;
-  min-width: 34px;
-  padding: 8px 4px;
-  border: none;
-  background: transparent;
-  color: var(--fg-dimmer);
-  font-size: 15px;
-  line-height: 1;
-  cursor: pointer;
-}
-.rec-cancel:active { color: var(--fg); }
-/* Info span: non-interactive; flex-grows to fill the middle, which is the
-   buffer keeping cancel and send apart. */
-.rec-info {
+.rec-main {
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
   align-items: center;
   gap: 10px;
+  padding: 8px 12px;
   font-family: var(--mono);
   font-size: 14px;
   color: var(--fg);
-  overflow: hidden;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  box-shadow: 0 0 0 calc(var(--lvl, 0) * 8px)
+              color-mix(in oklab, var(--red) 20%, transparent);
+  transition: box-shadow 0.1s linear;
 }
+.rec-main:active { background: var(--bg-elev-2); }
 .rec-dot {
   flex: 0 0 auto;
   width: 10px;
@@ -545,6 +535,7 @@ body.show-markers .markers-toggle {
 }
 .rec-time { flex: 0 0 auto; }
 .rec-time.warn { color: var(--yellow); }
+.rec-label { flex: 0 0 auto; color: var(--fg-dim); }
 .rec-hint {
   flex: 0 1 auto;
   min-width: 0;
@@ -553,23 +544,9 @@ body.show-markers .markers-toggle {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Send: prime bottom-right thumb zone, prominent (neutral, not red — red is
-   the dot/level, not the primary action). Level ring glows via --lvl. */
-.rec-send {
-  flex: 0 0 auto;
-  padding: 10px 20px;
-  font-family: var(--mono);
-  font-size: 14px;
-  color: var(--fg);
-  background: var(--bg-elev-2);
-  border: 1px solid var(--border-hover);
-  border-radius: 6px;
-  cursor: pointer;
-  box-shadow: 0 0 0 calc(var(--lvl, 0) * 8px)
-              color-mix(in oklab, var(--red) 20%, transparent);
-  transition: box-shadow 0.1s linear;
-}
-.rec-send:active { background: var(--bg); }
+/* Scoped with .voice-rec so this wins over the phone layout's `.tkey
+   { flex: 1 1 0 }` — cancel stays a small keycap; the row has the stretch. */
+.voice-rec .rec-cancel { flex: 0 0 auto; }
 
 /* Transcript panel above the bar: the transcript briefly outranks the
    terminal — full wrapped text at reading size, small pulsing status row
@@ -597,38 +574,76 @@ body.show-markers .markers-toggle {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--fg-dim);
+  color: var(--cyan);
 }
 .voice-chip-text:not([hidden]) + .voice-chip-status:not([hidden]) { margin-top: 6px; }
-.voice-chip.sending .voice-chip-status {
-  color: var(--cyan);
-  animation: status-pulse 1.4s ease-in-out infinite;
+/* In-progress status (transcribing…) pulses; "sent" is steady. */
+.voice-chip.live .voice-chip-status { animation: status-pulse 1.4s ease-in-out infinite; }
+/* Delivery couldn't complete — the source went offline before draining it. */
+.voice-chip.failed .voice-chip-status { color: var(--red); animation: none; }
+
+/* Delivery-status pill — small, between input and Send. Empty when nothing's
+   in flight; "sending…" phone→hub, "sent" once the hub has it, and
+   "not delivered" if a queued input can't reach a live source. (Voice routes
+   the same states through its transcript panel instead.) */
+/* Inline strip of recently-sent picker keys, between input and status.
+   Each chip is a glyph for the key that was sent. Auto-fades after a
+   quiet period so it doesn't accumulate forever. Helps the user keep
+   track of what they pressed since the input field stays empty during
+   picker navigation. */
+.key-log {
+  flex: 0 1 auto;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  min-width: 0;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  overflow: hidden;
 }
-/* Escape route: while an input is frozen, the feedback is tap-to-dismiss.
-   The hint shows on the held voice transcript (not the transcribing pulse). */
-body.input-pending .voice-chip { cursor: pointer; }
-body.input-pending .voice-chip:not(.sending)::after {
-  content: 'tap to dismiss';
-  display: block;
-  margin-top: 6px;
+.key-log.visible { opacity: 1; }
+.key-chip {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--fg-dim);
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
+.input-status {
+  flex: 0 0 auto;
+  align-self: center;
   font-family: var(--sans);
   font-size: 11px;
-  letter-spacing: 0.03em;
-  color: var(--fg-dim);
-  opacity: 0.7;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 10px;
+  color: transparent;
 }
-body.input-pending .input-bar-text.pending { cursor: pointer; }
-/* #key-log is a hidden state hook only (the batch's visible feedback is the
-   count badge on ↓); it never renders. Kept in the DOM so renderBatchLog has a
-   stable node to write into without a null check. */
-.key-log { display: none !important; }
-
-/* Pulse for transient/in-flight states — used by the recording dot and the
-   voice chip's "sending…" status. (The old typed-input status pill was
-   removed with the fire-and-forget input change; keyframes retained.) */
+/* In flight, phone → hub. Pulses so it reads as "still resolving", not a
+   settled label. Snappier than the ambient working breath (2.4s). */
+.input-status.sending {
+  color: var(--yellow);
+  background: color-mix(in oklab, var(--yellow) 12%, var(--bg-elev));
+  animation: status-pulse 1s ease-in-out infinite;
+}
 @keyframes status-pulse {
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.4; }
+}
+/* The hub has it — settled, steady, no pulse. */
+.input-status.sent {
+  color: var(--cyan);
+  background: color-mix(in oklab, var(--cyan) 12%, var(--bg-elev));
+}
+/* Couldn't reach a live source — the honest failure state. */
+.input-status.failed {
+  color: var(--red);
+  background: color-mix(in oklab, var(--red) 14%, var(--bg-elev));
 }
 
 /* ---------- inline styles applied by app.js for cells ---------- */
@@ -639,11 +654,10 @@ body.input-pending .input-bar-text.pending { cursor: pointer; }
 .us { text-decoration: underline line-through; }
 .dm { opacity: 0.6; }
 
-/* ---------- touch keys ----------
-   One compact control row on phones ([🎙/✕] [↓] [^C] [⋯/send]); hidden on
-   desktop (the keyboard-capture path drives pickers there). Revealed in the
-   phone layout below as thumb-sized keycaps. */
-.main-keys { display: none; }
+/* ---------- touch picker keys ----------
+   Hidden on desktop (the keyboard-capture path drives pickers there).
+   Revealed in the phone layout below as thumb-sized keycaps. */
+.touch-keys { display: none; }
 .tkey {
   font-family: var(--mono);
   font-size: 17px;
@@ -666,13 +680,6 @@ body.input-pending .input-bar-text.pending { cursor: pointer; }
   border-color: var(--border-hover);
   transform: translateY(1px);
 }
-/* An immediate control key (esc/⇧tab/^C) isn't shown in the batch preview, so
-   it flashes when it fires — brief bright pulse, then fades back. */
-@keyframes key-flash {
-  0%   { background: color-mix(in oklab, var(--fg) 28%, var(--bg-elev-2)); border-color: var(--border-hover); }
-  100% { background: var(--bg-elev-2); border-color: var(--border); }
-}
-.tkey.sent-flash { animation: key-flash 0.4s ease-out; }
 .tkey-go {
   color: var(--cyan);
   border-color: color-mix(in oklab, var(--cyan) 40%, var(--border));
@@ -683,58 +690,13 @@ body.input-pending .input-bar-text.pending { cursor: pointer; }
    the nav row's edge (see markup) to resist accidental taps. */
 .tkey-int { color: color-mix(in oklab, var(--red) 75%, var(--fg)); }
 .tkey-int:active { background: color-mix(in oklab, var(--red) 16%, var(--bg-elev-2)); }
-.tkey:disabled { opacity: 0.32; }
-/* Overflow trigger (⋯) — quiet; a flat glyph, no chrome distinction. */
-.tkey-more { color: var(--fg-dim); }
-/* Abort the composed batch — a quiet ✕ in the mic's (far-left) slot while
-   composing, out of the send path. Revealed by body.composing (below). */
-.tkey-abort { color: var(--fg-dim); }
-.tkey-abort:active { color: var(--fg); }
-/* State swaps (phone only — main-keys is display:none on desktop). Idle shows
-   [🎙][↓][^C][⋯]; composing swaps 🎙→✕ and ⋯→send, keeping the ↓/^C slots put. */
-.tkey-abort, .tkey-go { display: none; }
-body.composing .tkey-mic,
-body.composing .tkey-more { display: none; }
-body.composing .tkey-abort,
-body.composing .tkey-go { display: inline-flex; }
-/* Batch count badge on ↓ — tiny cyan pip, top-right of the key. */
-.tkey-down { position: relative; }
-.key-badge {
-  position: absolute;
-  top: 3px;
-  right: 5px;
-  min-width: 15px;
-  height: 15px;
-  padding: 0 3px;
-  border-radius: 8px;
-  background: var(--cyan);
-  color: var(--bg);
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 15px;
-  text-align: center;
-}
-.key-badge[hidden] { display: none !important; }
-/* Overflow menu (⋯): Type / esc / ⇧tab, floating above the bar's right edge. */
-.overflow-menu {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  right: calc(12px + env(safe-area-inset-right));
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 6px;
-  background: var(--bg-elev-2);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-  z-index: 10;
-}
-.overflow-menu[hidden] { display: none !important; }
-.ov-key { min-width: 120px; justify-content: flex-start; gap: 8px; font-size: 16px; }
-/* Frozen while an input is in flight: the control row dims and stops taking
-   taps (the JS guards block it too; this is the visible cue). */
-body.input-pending .main-keys { opacity: 0.5; pointer-events: none; }
+
+/* Voice/commit row — its own line under the nav keys on phones; hidden on
+   desktop, where the field-side .voice-mic keycap serves. */
+.voice-keys { display: none; }
+/* The phone mic is a full-width primary key, so it carries a word, not just a
+   glyph. Desktop's icon-only .voice-mic has no label span. */
+.tkey-mic-label { margin-left: 8px; font-size: 15px; letter-spacing: 0.02em; }
 
 /* ---------- phone layout ----------
    Touch devices up to phone-landscape width (so it survives rotation; an
@@ -760,59 +722,52 @@ body.input-pending .main-keys { opacity: 0.5; pointer-events: none; }
   /* Bigger back-button tap target. */
   .topbar .back { font-size: 20px; padding: 6px 10px; }
 
-  /* Input bar: text row wraps above a full-width row of touch keys. The bar's
-     panel color hugs the keys; the home-indicator safe area below is a MARGIN
-     (not padding), so it shows the page's system-black rather than the bar's
-     lighter panel — no app-owned band under the keys. */
+  /* Input bar: text row wraps above a full-width row of touch keys. */
   .input-bar {
     flex-wrap: wrap;
     align-items: center;
-    padding-top: 8px;
-    padding-bottom: 8px;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
     padding-left: calc(12px + env(safe-area-inset-left));
     padding-right: calc(12px + env(safe-area-inset-right));
-    margin-bottom: env(safe-area-inset-bottom);
   }
-  /* The field is a full-width panel that only appears when you tap Type (in
-     the overflow) — it docks to the keyboard. Idle, the control row owns the
-     bar instead. 16px so iOS doesn't auto-zoom on focus. */
-  .input-wrap {
-    align-items: center;
-    gap: 8px;
-    min-height: 44px;
-    padding: 0 12px;
-    background: var(--bg-elev-2);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-  }
+  /* Typing is a rare backup to voice, so the reply field stays compact and
+     quiet — a short, muted tap target, not a prominent full-width input bar.
+     Focusing it raises the keyboard (and grows it — see kbd-active below).
+     16px still, so iOS doesn't auto-zoom the page on focus. */
   .input-bar-text {
     font-size: 16px;
-    padding: 0;
-    min-height: 0;
-    background: transparent;
-    border: none;
-    color: var(--fg);
+    padding: 6px 12px;
+    background: var(--bg-elev-2);
+    color: var(--fg-dim);
   }
+  .input-bar-text:focus { color: var(--fg); }
 
-  /* One row. The control row (main-keys) owns the bar when idle; the field
-     (kbd-active) and the recording surface each replace it full-width when
-     active. Only one of the three is displayed at a time, so all claim the
-     full width and none wrap. */
-  .input-wrap { display: none; order: 1; flex: 1 1 100%; min-width: 0; }
-  .voice-rec  { order: 1; flex: 1 1 100%; min-width: 0; }
-  body.kbd-active .input-wrap { display: flex; }
-
-  .main-keys {
+  .touch-keys {
     display: flex;
     gap: 8px;
-    order: 1;
-    flex: 1 1 100%;
-    min-width: 0;
+    width: 100%;          /* force its own row under the text field */
+    order: 9;
   }
-  .tkey { flex: 1 1 0; min-width: 0; padding: 0 6px; }
-  .tkey-mic, .tkey-abort { flex: 1.4 1 0; }   /* voice slot a touch wider */
-  /* Typing (keyboard up) or recording: the field / rec surface fills the row;
-     the control keys hide. */
-  body.kbd-active .main-keys,
-  body.recording .main-keys { display: none; }
+  /* Voice/commit row: its own full-width line below the nav keys, so the mic
+     can be the biggest target — thumb-home at the bottom edge. */
+  .voice-keys {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+    order: 10;
+  }
+  .tkey { flex: 1 1 0; }
+  /* Voice is primary — the mic fills the commit row: whole width when ↵ is
+     hidden, most of it once ↵ appears. */
+  .tkey-mic { flex: 1 1 auto; }
+  .tkey-go { flex: 0 0 auto; min-width: 68px; }
+  /* The on-screen ↵ is only needed to CONFIRM a picker (when the keyboard
+     is dismissed). For text replies the keyboard's own return suffices, so
+     keep ↵ hidden until the user actually starts picker navigation. */
+  .tkey-go { display: none; }
+  body.picker-used .tkey-go { display: inline-flex; }
+  /* Typing mode: the field is focused (keyboard up) → hide both key rows;
+     they're not needed for text and the keyboard's return submits. */
+  body.kbd-active .touch-keys,
+  body.kbd-active .voice-keys { display: none; }
 }
