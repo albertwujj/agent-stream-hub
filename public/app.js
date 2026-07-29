@@ -398,6 +398,11 @@
             <input class="input-bar-text" id="input-bar-text" type="text"
                    placeholder="Type to reply, Enter to send · empty + arrow/Tab/Esc → picker keys"
                    enterkeyhint="send" autocomplete="off" />
+            <!-- Composed picker-key batch, one chip per key run (↓×3). Desktop's
+                 press-time feedback: overlays the (empty while composing) field.
+                 The phone layout hides the field while composing; there the ↓
+                 badge + ✕/send swap carry the same signal. -->
+            <span class="key-log" id="key-log"></span>
           </div>
           <!-- Voice is the primary input method: a full keycap-sized target
                next to the field (44px-class, thumb zone), not a glyph tucked
@@ -426,9 +431,6 @@
             </span>
             <button type="button" class="rec-send" id="rec-send" aria-label="Stop and send">tap to send</button>
           </div>
-          <!-- Batch state hook (kept for the batch model; the visible feedback
-               is the count badge on ↓, not a chip strip). -->
-          <span class="key-log" id="key-log" hidden></span>
           <!-- One compact control row (phone): [🎙 / ✕] [↓·badge] [^C] [⋯ / send].
                Voice is primary (icon, a touch wider); ↓ composes and carries the
                batch count; ^C stays for one-tap interrupt; the overflow (⋯) holds
