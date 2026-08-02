@@ -437,23 +437,30 @@ body.show-markers .markers-toggle {
 .input-bar {
   position: relative;   /* positioning context for the anchored .latest-fab */
   display: flex;
+  align-items: flex-end;   /* field grows upward; the mic keycap stays put */
   gap: 8px;
   padding: 10px 12px;
   background: var(--bg-elev);
   border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
+/* A textarea, not an input: long text wraps onto new rows (autosizeInput
+   grows the height per row) instead of scrolling off to the left. */
 .input-bar-text {
   flex: 1 1 auto;
   min-width: 0;
   padding: 8px 10px;
   font-family: var(--mono);
   font-size: 14px;
+  line-height: 20px;
   background: var(--bg);
   color: var(--fg);
   border: 1px solid var(--border);
   border-radius: 6px;
   outline: none;
+  resize: none;
+  overflow-y: auto;
+  max-height: 118px;   /* 5 rows; beyond that the field itself scrolls */
 }
 .input-bar-text:focus { border-color: var(--border-hover); }
 
@@ -477,6 +484,7 @@ body.show-markers .markers-toggle {
 .voice-mic {
   flex: 0 0 auto;
   min-width: 44px;
+  height: 38px;   /* single-row field height; bottom-anchored as it grows */
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg-elev-2);
@@ -505,6 +513,7 @@ body.show-markers .markers-toggle {
 .voice-rec {
   flex: 1 1 auto;
   min-width: 0;
+  min-height: 38px;   /* match the single-row field now the bar bottom-aligns */
   display: flex;
   align-items: center;
   gap: 12px;

@@ -109,7 +109,7 @@
     batch = [];
     lastSentText = '';
     const inputEl = document.getElementById('input-bar-text');
-    if (inputEl) { inputEl.readOnly = false; inputEl.value = ''; inputEl.classList.remove('pending'); }
+    if (inputEl) { inputEl.readOnly = false; inputEl.value = ''; inputEl.classList.remove('pending'); autosizeInput(); }
     renderBatchLog();
     // Leaving the view mid-recording discards the take (interruption =
     // never send), and any chip belongs to the run we're leaving.
@@ -395,9 +395,9 @@
           <!-- The reply field. On phone it's hidden until you tap "Type" in the
                overflow; then it shows full-width and docks to the keyboard. -->
           <div class="input-wrap" id="input-wrap">
-            <input class="input-bar-text" id="input-bar-text" type="text"
+            <textarea class="input-bar-text" id="input-bar-text" rows="1"
                    placeholder="Type to reply, Enter to send · empty + arrow/Tab/Esc → picker keys"
-                   enterkeyhint="send" autocomplete="off" />
+                   enterkeyhint="send" autocomplete="off"></textarea>
             <!-- Composed picker-key batch, one chip per key run (↓×3). Desktop's
                  press-time feedback: overlays the (empty while composing) field.
                  The phone layout hides the field while composing; there the ↓
@@ -481,6 +481,7 @@
       const inputEl = document.getElementById('input-bar-text');
       if (inputEl) {
         inputEl.addEventListener('keydown', onInputKeydown);
+        inputEl.addEventListener('input', autosizeInput);
         // While the field is focused (keyboard up) hide the picker-key row:
         // you don't need it to type, and the keyboard's own return submits.
         inputEl.addEventListener('focus', () => document.body.classList.add('kbd-active'));
@@ -578,13 +579,28 @@
     'Tab': 'Tab', 'ShiftTab': '⇧Tab', 'CtrlC': '^C', 'Escape': 'Esc',
     'PageUp': 'PgUp', 'PageDown': 'PgDn', 'Home': 'Home', 'End': 'End',
   };
+  // The reply field hugs its content: one row while empty, one more per
+  // wrapped line up to the CSS max-height, past which it scrolls. Recomputed
+  // on every input event and wherever code sets .value directly.
+  function autosizeInput() {
+    const el = document.getElementById('input-bar-text');
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = (el.scrollHeight + el.offsetHeight - el.clientHeight) + 'px';
+  }
+
   function onInputKeydown(ev) {
     // Modifier combos: never intercept (browser shortcuts).
     if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
     const input = ev.currentTarget;
 
-    // Enter falls through to the form submit (flush batch / send typed).
-    if (ev.key === 'Enter') return;
+    // Enter submits (flush batch / send typed). The field is a textarea, so
+    // its default Enter would insert a newline instead of submitting.
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      if (input.form) input.form.requestSubmit();
+      return;
+    }
     // Backspace on an empty field discards the whole composed batch.
     if (ev.key === 'Backspace' && input.value === '' && batch.length > 0) {
       ev.preventDefault();
@@ -1044,6 +1060,7 @@
         const input = document.getElementById('input-bar-text');
         if (input && !input.readOnly && input.value === '') {
           input.value = data.transcript;
+          autosizeInput();
           updateMicVisibility();
           voiceNotice('not sure I heard right — review & send');
         } else {
@@ -1197,7 +1214,7 @@
       typedPending = false;
       const input = document.getElementById('input-bar-text');
       if (input) {
-        if (lastSentText && input.value === lastSentText) input.value = '';
+        if (lastSentText && input.value === lastSentText) { input.value = ''; autosizeInput(); }
         input.readOnly = false;
         input.classList.remove('pending');
       }
