@@ -627,7 +627,25 @@ body.input-pending .voice-chip:not(.sending)::after {
   color: var(--fg-dim);
   opacity: 0.7;
 }
-body.input-pending .input-bar-text.pending { cursor: pointer; }
+/* Typed send in flight: the held text dims and a pulsing SENT tag sits at
+   the field's right edge until the source picks it up (click dismisses the
+   hold early — same escape as the voice chip). Without this the field looks
+   untouched after Enter, as if the send never happened. */
+body.input-pending .input-bar-text.pending { cursor: pointer; color: var(--fg-dim); }
+body.input-pending .input-wrap:has(.input-bar-text.pending)::after {
+  content: 'sent';
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--sans);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--cyan);
+  animation: status-pulse 1.4s ease-in-out infinite;
+  pointer-events: none;
+}
 /* Composed picker-key batch: a chip per key run (↓×3), overlaid on the right
    edge of the field — which is empty while composing, so the chips are the
    field's content. This is the desktop press-time feedback; the phone layout
