@@ -1,55 +1,39 @@
 # agent-stream-hub
 
-Streaming bridge that lets you peek at AI-CLI sessions running in
-[`agent-term`](https://github.com/albertwujj/agent-term) instances from a browser or
-installed PWA — even when the machine running the session can only make outbound
-HTTPS.
+A self-hosted relay and browser viewer for [AgentTerm](https://github.com/albertwujj/agent-term). See which agents need you across your machines, open their live terminal sessions, and reply from your phone or laptop.
 
-A source pushes terminal-viewport snapshots to the hub; the hub keeps a short
-in-memory history per run and serves a viewer SPA that stitches snapshots into a
-continuous, live-updating view. Schema-agnostic relay, ~300 LOC.
+<a name="run-locally"></a>
+<a name="configuration"></a>
+<a name="exposing-it-publicly"></a>
 
-- **[stream.md](stream.md)** — design, data model, endpoints, auth, roadmap.
-- **[voice.md](voice.md)** — voice input: transcription on the hub, `/voice` API,
-  injection contract, gate. Phone-side states: [voice-ux.md](voice-ux.md). The
-  agent-facing guide lives in [voice-to-agent](https://github.com/albertwujj/voice-to-agent).
+## Setting it up
 
-## Run locally
+Run the hub on a host that stays online. Clone the repository there, or clone locally and deploy remotely. Each machine running AgentTerm connects to the hub's URL; it does not need a hub clone.
 
-Requires Node 20+.
+Ask your agent:
 
-```bash
-node server.js
-# [hub] listening on http://127.0.0.1:9000
-
-# in another shell:
-curl http://127.0.0.1:9000/         # viewer SPA
-curl http://127.0.0.1:9000/runs     # list runs (JSON)
+```text
+Deploy the repository below to <hub host>, following its docs/setup.md,
+and connect my AgentTerm sessions to it.
+https://github.com/albertwujj/agent-stream-hub
 ```
 
-The hub binds to `127.0.0.1` only and keeps all state in memory.
+The [setup guide](docs/setup.md) covers hosting, authentication, connecting AgentTerm, and optional voice input.
 
-## Configuration
+## Using it
 
-| Env var | Default | Meaning |
-|---|---|---|
-| `PORT` | `9000` | Listen port (always bound to `127.0.0.1`). |
-| `STREAM_HUB_SECRET` | unset | If set, tunneled reads + destructive writes require a matching `X-Hub-Secret`. If unset, the hub is fully open (dev/local). |
+Open the hub's URL in your browser, or add it to your phone's home screen as a web app. You can type replies, operate terminal menus, and speak to the agent when voice input is configured. See [the phone guide](https://github.com/albertwujj/agent-term/blob/main/docs/phone.md) for examples.
 
-Source POSTs (`/runs`, `/snapshot`, `/heartbeat`) are always auth-open so
-locked-down source machines need no shared secret. See
-[stream.md](stream.md) for the full auth model.
+## The mechanics
 
-## Exposing it publicly
-
-The hub listens on loopback and is unaware of how it's reached — put any HTTPS
-reverse proxy in front of `127.0.0.1:9000`. A Cloudflare named tunnel, an SSH
-reverse tunnel, Tailscale, or an nginx/caddy origin all work. Prefer something
-that gives a **stable** public URL, and run it under a supervisor that starts at
-boot (systemd / a launchd LaunchDaemon) so it survives a headless reboot.
+See the [streaming protocol](stream.md) for architecture, data, and endpoints; [voice input](voice.md) for transcription and delivery; and [voice interaction](voice-ux.md) for the phone's recording and review behavior.
 
 ## Tests
 
 ```bash
 node --test
 ```
+
+## License
+
+[MIT](LICENSE).
