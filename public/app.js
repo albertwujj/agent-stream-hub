@@ -66,15 +66,15 @@
   document.addEventListener('DOMContentLoaded', init);
 
   function init() {
-    // One-time secret seeding. A link of the form `?s=<secret>` stores the
+    // One-time secret seeding. A link of the form `#s=<secret>` stores the
     // secret and strips it from the URL — so the secret can be set by opening
     // a link once (no typing, no blocking prompt). Handy on phones.
     try {
-      const sp = new URLSearchParams(location.search);
+      const sp = new URLSearchParams(location.hash.slice(1));
       const seeded = sp.get('s');
       if (seeded) {
         localStorage.setItem('agent-stream-secret', seeded.trim());
-        history.replaceState(null, '', location.pathname + location.hash);
+        history.replaceState(null, '', location.pathname + location.search);
       }
     } catch (e) {}
     // Restore the "show stream markers" preference from localStorage.
@@ -219,7 +219,7 @@
   // Prompt for the secret at most ONCE per page load. The viewer polls every
   // few seconds; auto-prompting on every 401 would spam the blocking dialog
   // and (on iOS) make it impossible to even reach Add-to-Home-Screen. After a
-  // single ask we stay quiet — a reload re-asks, or a `?s=` seed link sets it
+  // single ask we stay quiet — a reload re-asks, or a `#s=` seed link sets it
   // silently with no dialog at all.
   let secretAsked = false;
   async function authFetch(url, opts) {

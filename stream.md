@@ -129,7 +129,7 @@ interjections land in seconds; back to 30s-while-working once nobody has looked
 for ~5 min. Snapshot acks carry it too, which is how a working source (slow
 heartbeats, frequent snapshots) learns of a new viewer within a second or two.
 
-### Viewer / debug → hub (auth-gated: `X-Hub-Secret` required when tunneled)
+### Viewer / debug → hub (auth-gated: `X-Hub-Secret` required when configured)
 
 | Method | Path | Returns |
 |---|---|---|
@@ -142,13 +142,43 @@ heartbeats, frequent snapshots) learns of a new viewer within a second or two.
 
 ### Auth model
 
-- **Loopback (no `CF-Connecting-IP` header)**: open. Host-local debugging
-  needs no secret.
-- **Tunneled source POSTs**: `/runs`, `/runs/:id/snapshot`, `/runs/:id/heartbeat`
-  are whitelisted as auth-open so corporate source boxes don't need a shared
-  secret distributed to them.
-- **Tunneled reads + destructive writes**: require `X-Hub-Secret`. Viewer
-  prompts for it on first request and persists in `localStorage`.
+- **Viewer reads and control**: when `STREAM_HUB_SECRET` is set, require
+  `X-Hub-Secret` on every connection, including loopback. Proxy headers do
+  not bypass authentication. The viewer prompts once and stores the secret
+  in `localStorage`.
+- **Source POSTs**: `/runs`, `/runs/:id/snapshot`, `/runs/:id/heartbeat`
+  remain open so source machines do not need the viewer secret. A run ID
+  acts as a capability to publish snapshots and drain queued replies;
+  keep it private. Anonymous registration is possible, so this is a hub
+  for mutually trusted machines and users, not isolated tenants.
+- **Local development**: with no secret, API requests require a loopback
+  Host and no Cloudflare forwarding header. Always set a secret before
+  exposing a proxy, including proxies that rewrite Host to localhost.
+- **Browser boundary**: API requests from other origins are rejected;
+  there is no wildcard CORS. Serve the viewer from the hub and preserve
+  Host at the proxy. Native AgentTerm sources do not send Origin headers.
+- **JSON POSTs**: require `Content-Type: application/json`; `/voice` accepts
+  raw audio. Static viewer assets are public and include no session data.
+
+### Resource limits
+
+The hub retains at most 128 runs. Registration metadata is limited to
+16 KiB; POST bodies to 4 MiB. Each run keeps up to 400 snapshots or 8 MiB
+of serialized snapshot data, whichever is smaller. A 64 MiB global snapshot
+budget removes the oldest snapshots under pressure. These are serialized
+byte limits, not a bound on total JavaScript heap usage. Runs expire after
+24 hours without activity.
+
+Each run queues at most 64 replies totaling 64 KiB across typed and voice
+input. A full queue returns `429` without accepting the input; heartbeat
+drains it. Registration at capacity returns `503`; metadata over its limit
+returns `413`. Snapshot and metadata fields consumed by the viewer are
+validated before storage; extra fields remain allowed.
+
+Voice processing permits two concurrent requests, limits decoding to
+15 seconds and transcription to 30 seconds, and rejects recordings over
+two minutes. Request-rate and connection limits belong at the proxy.
+See [Security](SECURITY.md) for deployment and data handling.
 
 ## Source-side stream lifecycle
 
@@ -279,7 +309,8 @@ Source reads from `~/.agent-term/config.json`:
   Set when running viewer-side curl debugging.
 
 Viewer prompts for the hub secret on first auth-gated request and persists
-it in `localStorage`.
+it in `localStorage`. Optional seed links use `#s=<URL-encoded-secret>`
+so the secret is not sent in the HTTP URL; query-string seeding is unsupported.
 
 ## Iterative roadmap — current state
 

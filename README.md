@@ -28,11 +28,15 @@ Open the hub's URL in your browser, or add it to your phone's home screen as a w
 
 See the [streaming protocol](stream.md) for architecture, data, and endpoints; [voice input](voice.md) for transcription and delivery; and [voice interaction](voice-ux.md) for the phone's recording and review behavior.
 
+See [Security](SECURITY.md) for access boundaries, data handling, and private vulnerability reports.
+
 ## Tests
 
 ```bash
 node --test
 ```
+
+Install FFmpeg to include the voice tests. CI runs the full suite, including voice decoding and security regression tests.
 
 ## License
 

@@ -13,14 +13,23 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const zlib = require('zlib');
-const { spawn } = require('child_process');
+const { execFile } = require('child_process');
 
 const HOST = '127.0.0.1';
-const PORT = Number(process.env.PORT) || 9000;
+const PORT = process.env.PORT === undefined ? 9000 : Number(process.env.PORT);
 
 const RING_CAP = 400;             // entries kept per run (snapshots + markers)
-const EVICT_MS = 24 * 60 * 60 * 1000; // hard memory bound: runs are forgotten after a day with no activity
+const EVICT_MS = 24 * 60 * 60 * 1000; // forget runs after a day with no activity
 const MAX_BODY = 4 * 1024 * 1024; // 4 MiB per POST
+const MAX_RUNS = 128;
+const MAX_META = 16 * 1024;
+const MAX_RUN_SNAPSHOTS = 8 * 1024 * 1024;
+const MAX_SNAPSHOTS = 64 * 1024 * 1024; // serialized bytes; JS heap usage is higher
+const MAX_INPUT_BYTES = 64 * 1024;
+const MAX_INPUTS = 64;
+const ENTRY_BYTES = Symbol('stored bytes');
+let snapshotBytes = 0;
+let activeVoices = 0;
 // Compaction: two adjacent SNAPSHOT entries are considered "nearly
 // identical" (newer overwrites older instead of being appended) when
 // ≥COMPACT_TEXT_MATCH of their rows have identical text. Markers
@@ -38,11 +47,9 @@ const GATE_AVG_LOGPROB = -1.0; // below → low_confidence
 const GATE_NO_SPEECH = 0.6;    // above (with weak logprob) → no_speech
 const GATE_COMPRESSION = 2.4;  // above → low_confidence (repetition loop)
 
-// Shared secret. If unset, the hub is fully open (dev/local mode).
-// If set, any request that arrived via cloudflared (CF-Connecting-IP
-// header present) must carry the matching X-Hub-Secret. Loopback
-// requests originating on the hub host itself skip auth — keeps
-// SSH-in debugging trivial.
+// When set, viewer endpoints require the secret on every connection,
+// including loopback. Proxy headers must never decide whether auth applies.
+// Unset is for local development only; public hosting requires a secret.
 const STREAM_HUB_SECRET = process.env.STREAM_HUB_SECRET || null;
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -75,6 +82,63 @@ const MIME = {
  * }>}
  */
 const runs = new Map();
+
+function removeRun(id) {
+  const r = runs.get(id);
+  if (r) snapshotBytes -= r.ringBytes;
+  runs.delete(id);
+}
+
+function dropSnapshot(r) {
+  const removed = r.ring.shift();
+  r.ringBytes -= removed[ENTRY_BYTES];
+  snapshotBytes -= removed[ENTRY_BYTES];
+}
+
+function storeSnapshot(r, entry) {
+  entry[ENTRY_BYTES] = Buffer.byteLength(JSON.stringify(entry));
+  const last = r.ring.at(-1);
+  if (last && nearlyIdentical(last.payload, entry.payload)) {
+    r.ring.pop();
+    r.ringBytes -= last[ENTRY_BYTES];
+    snapshotBytes -= last[ENTRY_BYTES];
+  }
+  r.ring.push(entry);
+  r.ringBytes += entry[ENTRY_BYTES];
+  snapshotBytes += entry[ENTRY_BYTES];
+  while (r.ring.length > RING_CAP || r.ringBytes > MAX_RUN_SNAPSHOTS) dropSnapshot(r);
+  while (snapshotBytes > MAX_SNAPSHOTS) {
+    let oldest = null;
+    for (const candidate of runs.values()) {
+      if (candidate.ring.length && (!oldest || candidate.ring[0].ts < oldest.ring[0].ts)) oldest = candidate;
+    }
+    dropSnapshot(oldest);
+  }
+}
+
+function queueInput(r, prompt, voice) {
+  const bytes = Buffer.byteLength(prompt);
+  if (r.inputs.length + r.voiceInputs.length >= MAX_INPUTS || r.inputBytes + bytes > MAX_INPUT_BYTES) return false;
+  (voice ? r.voiceInputs : r.inputs).push(prompt);
+  r.inputBytes += bytes;
+  return true;
+}
+
+function validMeta(meta) {
+  return meta && !Array.isArray(meta) && typeof meta.runId === 'string' &&
+    /^[A-Za-z0-9_-]{1,128}$/.test(meta.runId) &&
+    ['cli', 'title', 'host'].every(k => meta[k] === undefined || typeof meta[k] === 'string') &&
+    ['startedAt', 'hue'].every(k => meta[k] === undefined || Number.isFinite(meta[k]));
+}
+
+function validPayload(payload) {
+  return payload && Array.isArray(payload.rows) && payload.rows.length <= 4096 &&
+    payload.rows.every(row => row && typeof row.text === 'string' &&
+      (row.styles === undefined || (Array.isArray(row.styles) && row.styles.every(style =>
+        style && Number.isInteger(style.start) && Number.isInteger(style.end) &&
+        style.start >= 0 && style.end >= style.start &&
+        ['fg', 'bg'].every(k => style[k] === undefined || typeof style[k] === 'string')))));
+}
 
 // Age (not a timestamp): hub and source clocks can't be compared, but
 // "how long ago" is clock-free — same reasoning as seq-vs-ts elsewhere.
@@ -129,26 +193,27 @@ function readBody(req) {
 // the end). ffmpeg sniffs the container from the bytes; Content-Type is
 // ignored.
 async function decodeTo16kWav(audio) {
-  const tmp = path.join(os.tmpdir(), `hub-voice-${crypto.randomBytes(8).toString('hex')}`);
-  await fs.promises.writeFile(tmp, audio);
+  const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'hub-voice-'));
+  const tmp = path.join(dir, 'audio');
   try {
+    await fs.promises.writeFile(tmp, audio, { mode: 0o600, flag: 'wx' });
     return await new Promise((resolve, reject) => {
-      const ff = spawn('ffmpeg', [
-        '-hide_banner', '-loglevel', 'error',
-        '-i', tmp, '-ar', '16000', '-ac', '1', '-f', 'wav', 'pipe:1',
-      ]);
-      const out = [];
-      const err = [];
-      ff.stdout.on('data', (c) => out.push(c));
-      ff.stderr.on('data', (c) => err.push(c));
-      ff.on('error', reject);
-      ff.on('close', (code) => {
-        if (code === 0 && out.length) resolve(Buffer.concat(out));
-        else reject(new Error(Buffer.concat(err).toString('utf8').trim() || `ffmpeg exited ${code}`));
+      execFile('ffmpeg', [
+        '-hide_banner', '-loglevel', 'error', '-nostdin',
+        // Only standalone recording containers; no playlists, network reads,
+        // or concat files that can reference arbitrary host files.
+        '-protocol_whitelist', 'file',
+        '-format_whitelist', 'mov,matroska,webm,wav,ogg',
+        '-i', tmp, '-map', '0:a:0', '-vn', '-t', '121',
+        '-ar', '16000', '-ac', '1', '-f', 'wav', 'pipe:1',
+      ], { encoding: 'buffer', timeout: 15000, killSignal: 'SIGKILL', maxBuffer: MAX_BODY }, (err, wav) => {
+        if (err || !wav.length || wav.length > 120 * 16000 * 2 + 1024) {
+          reject(new Error('invalid audio or recording exceeds two minutes'));
+        } else resolve(wav);
       });
     });
   } finally {
-    fs.promises.unlink(tmp).catch(() => {});
+    await fs.promises.rm(dir, { recursive: true, force: true });
   }
 }
 
@@ -161,7 +226,7 @@ async function transcribe(wav) {
   form.append('response_format', 'verbose_json');
   form.append('temperature', '0.0');
   form.append('temperature_inc', '1.0');
-  const res = await fetch(WHISPER_URL, { method: 'POST', body: form });
+  const res = await fetch(WHISPER_URL, { method: 'POST', body: form, signal: AbortSignal.timeout(30000) });
   if (!res.ok) throw new Error(`whisper-server ${res.status}`);
   return res.json();
 }
@@ -261,10 +326,9 @@ function serveStatic(req, res, urlPath) {
   return true;
 }
 
-// Fail-closed auth: every tunneled /runs* request needs the secret unless
+// Every /runs* request needs the configured secret unless
 // explicitly whitelisted.
 function requiresAuth(req, path) {
-  if (!req.headers['cf-connecting-ip']) return false;
   if (!path.startsWith('/runs')) return false;
   if (isOpenSourcePost(req, path)) return false;
   return true;
@@ -281,32 +345,64 @@ function isOpenSourcePost(req, path) {
 }
 
 async function handle(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Hub-Secret');
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self'; media-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+  if (!req.url.startsWith('/') || req.url.startsWith('//')) return badRequest(res, 'invalid path');
+  const url = new URL(req.url, 'http://localhost');
+  const path = url.pathname;
+  // Normal links from other sites may open the viewer; only API requests
+  // need the browser-origin checks below.
+  if (!path.startsWith('/runs')) {
+    if (serveStatic(req, res, path)) return;
+    return notFound(res);
+  }
+  // The viewer is served by this hub. Cross-origin browser clients are not
+  // part of the protocol; allowing them exposes even loopback-only hubs.
+  const site = req.headers['sec-fetch-site'];
+  if (site && site !== 'same-origin' && site !== 'none') return send(res, 403, 'cross-origin request denied\n');
+  if (req.headers.origin) {
+    let origin;
+    try { origin = new URL(req.headers.origin); } catch { return send(res, 403, 'invalid origin\n'); }
+    if (!['http:', 'https:'].includes(origin.protocol) || origin.host !== req.headers.host) {
+      return send(res, 403, 'cross-origin request denied\n');
+    }
+  }
+  // Host validation also blocks DNS rebinding against unauthenticated local
+  // development. A public deployment must set the secret and preserve Host.
+  if (!STREAM_HUB_SECRET && (!/^(127\.0\.0\.1|localhost)(:\d+)?$/.test(req.headers.host || '') || req.headers['cf-connecting-ip'])) {
+    return send(res, 403, 'configure STREAM_HUB_SECRET for public hosting\n');
+  }
   if (req.method === 'OPTIONS') return noContent(res);
 
-  const url = new URL(req.url, `http://${req.headers.host || HOST}`);
-  const path = url.pathname;
-
   if (STREAM_HUB_SECRET && requiresAuth(req, path)) {
-    if (req.headers['x-hub-secret'] !== STREAM_HUB_SECRET) {
+    const supplied = Buffer.from(req.headers['x-hub-secret'] || '');
+    const expected = Buffer.from(STREAM_HUB_SECRET);
+    if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) {
       return send(res, 401, 'unauthorized\n');
     }
+  }
+
+  if (req.method === 'POST' && path.startsWith('/runs') && !path.endsWith('/voice') &&
+      (req.headers['content-type'] || '').split(';')[0].trim().toLowerCase() !== 'application/json') {
+    return send(res, 415, 'application/json required\n');
   }
 
   // POST /runs  — register or update meta
   if (req.method === 'POST' && path === '/runs') {
     let meta;
     try { meta = JSON.parse(await readBody(req)); } catch { return badRequest(res, 'invalid json'); }
-    if (!meta || typeof meta.runId !== 'string') return badRequest(res, 'missing runId');
+    if (!validMeta(meta)) return badRequest(res, 'invalid run metadata');
+    if (Buffer.byteLength(JSON.stringify(meta)) > MAX_META) return send(res, 413, 'metadata too large\n');
     const now = Date.now();
     const existing = runs.get(meta.runId);
     if (existing) {
       existing.meta = meta;
       existing.lastSeen = now;
     } else {
-      runs.set(meta.runId, { meta, ring: [], lastSeen: now, lastViewedAt: 0, isWorking: false, inputs: [], voiceInputs: [] });
+      if (runs.size >= MAX_RUNS) return send(res, 503, 'run capacity reached\n');
+      runs.set(meta.runId, { meta, ring: [], ringBytes: 0, lastSeen: now, lastViewedAt: 0, isWorking: false, inputs: [], voiceInputs: [], inputBytes: 0 });
     }
     return noContent(res);
   }
@@ -323,12 +419,13 @@ async function handle(req, res) {
   // /runs/:id/...
   const m = path.match(/^\/runs\/([^\/]+)(?:\/(.+))?$/);
   if (m) {
-    const runId = decodeURIComponent(m[1]);
+    let runId;
+    try { runId = decodeURIComponent(m[1]); } catch { return badRequest(res, 'invalid runId'); }
     const rest = m[2];
 
     // DELETE /runs/:id
     if (req.method === 'DELETE' && !rest) {
-      runs.delete(runId);
+      removeRun(runId);
       return noContent(res);
     }
 
@@ -338,13 +435,15 @@ async function handle(req, res) {
       const r = runs.get(runId);
       if (!r) return notFound(res);
       let body = {};
-      try { body = JSON.parse(await readBody(req)); } catch {}
+      try { body = JSON.parse(await readBody(req)); } catch { return badRequest(res, 'invalid json'); }
+      if (!body || typeof body !== 'object' || Array.isArray(body)) return badRequest(res, 'invalid heartbeat');
       if (typeof body.isWorking === 'boolean') r.isWorking = body.isWorking;
       r.lastSeen = Date.now();
       const inputs = r.inputs;
       r.inputs = [];
       const voiceInputs = r.voiceInputs;
       r.voiceInputs = [];
+      r.inputBytes = 0;
       return ok(res, { inputs, voiceInputs, viewerAgeMs: viewerAgeMs(r) });
     }
 
@@ -357,8 +456,7 @@ async function handle(req, res) {
       let body;
       try { body = JSON.parse(await readBody(req)); } catch { return badRequest(res, 'invalid json'); }
       if (!body || typeof body.prompt !== 'string' || !body.prompt) return badRequest(res, 'missing prompt');
-      if (body.source === 'voice') r.voiceInputs.push(body.prompt);
-      else r.inputs.push(body.prompt);
+      if (!queueInput(r, body.prompt, body.source === 'voice')) return send(res, 429, 'input queue full\n');
       return noContent(res);
     }
 
@@ -369,26 +467,32 @@ async function handle(req, res) {
       const r = runs.get(runId);
       if (!r) return notFound(res);
       if (!WHISPER_URL) return send(res, 503, 'voice not configured\n');
-      let audio;
-      try { audio = await readBodyRaw(req); } catch { return badRequest(res, 'payload too large'); }
-      if (audio.length === 0) return badRequest(res, 'empty body');
-      let wav;
-      try { wav = await decodeTo16kWav(audio); } catch { return badRequest(res, 'undecodable audio'); }
-      if (peakRms(wav) < SILENCE_RMS) {
-        return ok(res, { transcript: '', sent: false, holdReason: 'no_speech', signals: null });
+      if (activeVoices >= 2) return send(res, 429, 'voice busy\n');
+      activeVoices++;
+      try {
+        let audio;
+        try { audio = await readBodyRaw(req); } catch { return badRequest(res, 'payload too large'); }
+        if (audio.length === 0) return badRequest(res, 'empty body');
+        let wav;
+        try { wav = await decodeTo16kWav(audio); } catch { return badRequest(res, 'undecodable audio'); }
+        if (peakRms(wav) < SILENCE_RMS) {
+          return ok(res, { transcript: '', sent: false, holdReason: 'no_speech', signals: null });
+        }
+        let result;
+        try { result = await transcribe(wav); } catch (e) {
+          console.error('[voice]', e.message);
+          return send(res, 503, 'whisper unavailable\n');
+        }
+        // Whisper joins segments with newlines; collapse to one line — a
+        // newline in typed input would submit the command early at the PTY.
+        const transcript = (result.text || '').replace(/\s+/g, ' ').trim();
+        const signals = gateSignals(result, transcript);
+        const holdReason = gateVerdict(transcript, signals);
+        if (!holdReason && !queueInput(r, transcript, true)) return send(res, 429, 'input queue full\n');
+        return ok(res, { transcript, sent: !holdReason, holdReason, signals });
+      } finally {
+        activeVoices--;
       }
-      let result;
-      try { result = await transcribe(wav); } catch (e) {
-        console.error('[voice]', e.message);
-        return send(res, 503, 'whisper unavailable\n');
-      }
-      // Whisper joins segments with newlines; collapse to one line — a
-      // newline in typed input would submit the command early at the PTY.
-      const transcript = (result.text || '').replace(/\s+/g, ' ').trim();
-      const signals = gateSignals(result, transcript);
-      const holdReason = gateVerdict(transcript, signals);
-      if (!holdReason) r.voiceInputs.push(transcript);
-      return ok(res, { transcript, sent: !holdReason, holdReason, signals });
     }
 
     // POST /runs/:id/snapshot — a viewport row array. Compacted when
@@ -398,15 +502,9 @@ async function handle(req, res) {
       if (!r) return notFound(res);
       let msg;
       try { msg = JSON.parse(await readBody(req)); } catch { return badRequest(res, 'invalid json'); }
-      if (!msg || typeof msg.seq !== 'number') return badRequest(res, 'missing seq');
+      if (!msg || !Number.isSafeInteger(msg.seq) || !validPayload(msg.payload)) return badRequest(res, 'invalid snapshot');
       const stored = { seq: msg.seq, ts: Date.now(), payload: msg.payload };
-      const last = r.ring.length > 0 ? r.ring[r.ring.length - 1] : null;
-      if (last && nearlyIdentical(last.payload, stored.payload)) {
-        r.ring[r.ring.length - 1] = stored;
-      } else {
-        r.ring.push(stored);
-        if (r.ring.length > RING_CAP) r.ring.shift();
-      }
+      storeSnapshot(r, stored);
       r.lastSeen = stored.ts;
       if (msg.payload && typeof msg.payload.isWorking === 'boolean') {
         r.isWorking = msg.payload.isWorking;
@@ -471,10 +569,10 @@ const server = http.createServer((req, res) => {
 setInterval(() => {
   const cutoff = Date.now() - EVICT_MS;
   for (const [id, r] of runs) {
-    if (r.lastSeen < cutoff) runs.delete(id);
+    if (r.lastSeen < cutoff) removeRun(id);
   }
 }, 60 * 1000).unref();
 
 server.listen(PORT, HOST, () => {
-  console.log(`[hub] listening on http://${HOST}:${PORT}`);
+  console.log(`[hub] listening on http://${HOST}:${server.address().port}`);
 });

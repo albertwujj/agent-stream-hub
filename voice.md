@@ -99,11 +99,11 @@ the PTY.
 ## `/voice` API
 
 `POST /runs/:runId/voice` — synchronous (~2 s), one round trip. Auth falls out of
-existing middleware (`/runs/*` viewer routes need `X-Hub-Secret` when tunneled).
+existing middleware (`/runs/*` viewer routes need `X-Hub-Secret` whenever a secret is configured).
 
 **Input:** raw audio bytes as the body (no multipart). Any `MediaRecorder` container
 (mp4/AAC on iOS Safari — the primary client; webm/opus elsewhere); ffmpeg sniffs, so
-`Content-Type` is advisory. 4 MiB cap ≈ 2–3 min; cap recording client-side.
+`Content-Type` is advisory. The hub accepts MP4, WebM/Matroska, WAV, and Ogg recordings; playlists and network inputs are rejected. Uploads are capped at 4 MiB and decoded recordings at two minutes. FFmpeg uses a private temporary directory, a bounded output buffer, and a 15-second timeout; transcription has a 30-second timeout. At most two voice requests run concurrently (`429` when busy).
 
 **Output (200):**
 

@@ -4,7 +4,7 @@ The hub runs on a host that stays online. It can be separate from every machine 
 
 ## Run locally
 
-Requires Node.js 20 or later. There are no npm dependencies to install. From the repository root:
+Requires Node.js 20 or later; use a currently supported LTS release for deployment. There are no npm dependencies to install. From the repository root:
 
 ```bash
 node server.js
@@ -23,11 +23,13 @@ The hub binds to `127.0.0.1` only. All session state and snapshot history are ke
 
 Give the hub a stable HTTPS URL that forwards to `127.0.0.1:9000`. A Cloudflare named tunnel is the existing deployment path. Machines running AgentTerm only need outbound HTTPS access to that URL; they do not need inbound ports.
 
-Set `STREAM_HUB_SECRET` in the hub process's environment before exposing it. The viewer asks for this secret and stores it in the browser. With the secret unset, the hub performs no authentication.
+Set a strong, random `STREAM_HUB_SECRET` in the hub process's environment before exposing it. The viewer asks for this secret and stores it in the browser. A configured secret is required for viewer requests on every connection, including local debugging. Leave it unset only for local development.
 
-The built-in authentication check relies on the `CF-Connecting-IP` header supplied by Cloudflare. If you use another reverse proxy, configure it to set this header on every forwarded request, overwriting any client-supplied value. Requests without it bypass the secret check, as they are treated as local debugging requests. Keep the hub bound to loopback behind the proxy.
+Keep the hub bound to loopback behind the proxy, and preserve the original `Host` header so the viewer's browser requests pass the origin check. Authentication does not depend on Cloudflare headers. The viewer must be served from the hub's own origin; cross-origin API access is blocked.
 
 Source registration, snapshot, and heartbeat POSTs remain open by design; the secret gates viewer reads, replies, voice input, and deletions. See the [authentication model](../stream.md#auth-model) for the endpoint rules. Before connecting sessions, verify that the public `/runs` endpoint returns `401` without `X-Hub-Secret` and `200` with the matching secret.
+
+Keep run IDs private: knowing a run ID allows a source to update that run and collect its queued replies. Anonymous sources can also register new runs. Use a hub for mutually trusted machines and users, and configure access and rate limits at the proxy as appropriate. See [security and data handling](../SECURITY.md).
 
 Run the hub and tunnel or proxy under a service manager, such as systemd or a launchd LaunchDaemon, so they start at boot and recover after a headless reboot. Put the environment variables in that service's configuration.
 
@@ -66,7 +68,7 @@ These environment variables belong to the hub process, on the hub host:
 | Variable | Default | Meaning |
 |---|---|---|
 | `PORT` | `9000` | Listen port; always bound to `127.0.0.1`. |
-| `STREAM_HUB_SECRET` | unset | Shared secret for proxied viewer requests under the authentication rules above. Unset disables authentication. |
+| `STREAM_HUB_SECRET` | unset | Shared secret for all viewer requests, including loopback. Unset is for local development only. |
 | `WHISPER_URL` | unset | The whisper-server inference endpoint. Unset disables voice transcription. |
 
 [Back to the README](../README.md).

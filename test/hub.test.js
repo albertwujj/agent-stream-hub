@@ -20,7 +20,7 @@ let hubProc = null;
 
 function startHub(extraEnv = {}) {
   return new Promise((resolve, reject) => {
-    const env = { ...process.env, PORT: String(HUB_PORT), ...extraEnv };
+    const env = { ...process.env, PORT: String(HUB_PORT), STREAM_HUB_SECRET: '', ...extraEnv };
     hubProc = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -167,9 +167,9 @@ async function main() {
   await startStubWhisper();
   try { await startHub({ WHISPER_URL: `http://${HUB_HOST}:${STUB_WHISPER_PORT}/inference` }); }
   catch (e) {
-    console.error(`SKIP: could not start hub on ${HUB_PORT}: ${e.message}`);
+    console.error(`FAIL: could not start hub on ${HUB_PORT}: ${e.message}`);
     stopStubWhisper();
-    process.exit(0);
+    process.exit(1);
   }
 
   try {
