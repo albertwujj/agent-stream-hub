@@ -1278,8 +1278,9 @@
         const st = cardState(r);
         if (st.kind === 'your_turn') {
           yourTurnCount++;
-          if (r.lastSeenAt && (oldestYourTurn === null || r.lastSeenAt < oldestYourTurn)) {
-            oldestYourTurn = r.lastSeenAt;
+          const touched = touchedKey(r);
+          if (touched && (oldestYourTurn === null || touched < oldestYourTurn)) {
+            oldestYourTurn = touched;
           }
         }
         if (r.lastSeenAt && r.lastSeenAt > newestLastSeen) newestLastSeen = r.lastSeenAt;
@@ -1378,19 +1379,24 @@
     return out;
   }
 
-  // Group sort: attention first (any your_turn within group → top),
-  // then within ties use a stable key. lastSeenAt would bump on every
-  // heartbeat (~2s) and shuffle order while everyone's "your turn";
-  // max startedAt across the group's runs is stable until the set of
-  // runs itself changes.
+  // When a run last drew the user (stream.md, touchedAt). Source clock, so
+  // compare only within one host. A run that never sent it ranks by its start.
+  function touchedKey(r) {
+    return r.touchedAt || r.startedAt || 0;
+  }
+
+  // Group sort: attention first (any your_turn within group → top), then
+  // the most recently touched. touchedAt moves on input and finished turns,
+  // never on a heartbeat (lastSeenAt bumps every ~2s), so the order holds
+  // still while sessions wait.
   function sortGroups(groups) {
-    const stableKey = (g) => g.all.reduce((m, r) => Math.max(m, r.startedAt || 0), 0);
+    const groupKey = (g) => g.all.reduce((m, r) => Math.max(m, touchedKey(r)), 0);
     return groups.slice().sort((a, b) => {
       const aHas = a.all.some((r) => cardState(r).kind === 'your_turn');
       const bHas = b.all.some((r) => cardState(r).kind === 'your_turn');
       if (aHas !== bHas) return aHas ? -1 : 1;
-      const ka = stableKey(a);
-      const kb = stableKey(b);
+      const ka = groupKey(a);
+      const kb = groupKey(b);
       if (ka !== kb) return kb - ka;
       return (a.title || '').localeCompare(b.title || '');
     });
@@ -1484,9 +1490,9 @@
       const ra = CARD_SORT_RANK[cardState(a).kind] ?? 9;
       const rb = CARD_SORT_RANK[cardState(b).kind] ?? 9;
       if (ra !== rb) return ra - rb;
-      const sb = b.startedAt || 0;
-      const sa = a.startedAt || 0;
-      if (sb !== sa) return sb - sa;
+      const ka = touchedKey(a);
+      const kb = touchedKey(b);
+      if (ka !== kb) return kb - ka;
       return (a.runId || '').localeCompare(b.runId || '');
     });
   }

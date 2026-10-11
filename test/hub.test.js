@@ -270,6 +270,17 @@ async function main() {
       eq(l2.body.isWorking, false);
     });
 
+    await test('heartbeat touchedAt flows into GET /runs', async () => {
+      const tId = 'test-touched';
+      await request('POST', '/runs', { runId: tId, startedAt: 1000 });
+      const listed = async () => (await request('GET', '/runs')).body.runs.find((r) => r.runId === tId);
+      eq((await listed()).touchedAt, null);
+      await request('POST', `/runs/${tId}/heartbeat`, { isWorking: false, touchedAt: 5000 });
+      eq((await listed()).touchedAt, 5000);
+      await request('POST', `/runs/${tId}/heartbeat`, { touchedAt: 'soon' });
+      eq((await listed()).touchedAt, 5000);
+    });
+
     await test('POST /input with source:voice routes to voiceInputs on drain', async () => {
       const vId = 'test-input-voice';
       await request('POST', '/runs', { runId: vId });

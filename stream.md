@@ -115,7 +115,7 @@ All under the hub's public base URL. Bodies are JSON unless noted.
 |---|---|---|---|
 | POST | `/runs` | `RunMeta` | `204` |
 | POST | `/runs/:runId/snapshot` | `{ seq, payload: Snapshot }` | `{ viewerAgeMs }` |
-| POST | `/runs/:runId/heartbeat` | `{ isWorking?: boolean }` | `{ inputs: string[], voiceInputs: string[], viewerAgeMs }` |
+| POST | `/runs/:runId/heartbeat` | `{ isWorking?: boolean, touchedAt?: number }` | `{ inputs: string[], voiceInputs: string[], viewerAgeMs }` |
 
 `voiceInputs` are voice-origin transcripts the source prefixes with the guide
 reference before typing (see [voice.md](voice.md)); `inputs` are typed viewer
@@ -129,11 +129,21 @@ interjections land in seconds; back to 30s-while-working once nobody has looked
 for ~5 min. Snapshot acks carry it too, which is how a working source (slow
 heartbeats, frequent snapshots) learns of a new viewer within a second or two.
 
+`touchedAt` is when the session last drew the user, in ms on the source's
+clock: their input, at the desk or from a viewer, or the agent finishing a
+turn. agent-term sends the timer its auto-hide ages windows out by, so the
+phone ranks sessions the way the desktop keeps them in view. The viewer lists a
+machine's sessions by state (your turn first), then most recently touched
+first; a run that never sent `touchedAt` ranks by `startedAt`. It is compared
+only among one machine's runs, which share a clock. It moves on input and
+finished turns, never on a heartbeat, so the list holds still while sessions
+wait.
+
 ### Viewer / debug → hub (auth-gated: `X-Hub-Secret` required when configured)
 
 | Method | Path | Returns |
 |---|---|---|
-| GET | `/runs` | `{ runs: RunMeta[] }` (all known) |
+| GET | `/runs` | `{ runs: RunMeta[] }` (all known), each with `lastSeenAt`, `isWorking`, `touchedAt` |
 | GET | `/runs/:runId/latest` | `{ snapshot, lastSeenAt, isWorking }` or `404` |
 | GET | `/runs/:runId/history?before=<seq>&limit=<n>` | `{ entries: Entry[] }` oldest→newest |
 | POST | `/runs/:runId/input` | viewer-submitted prompt (`source:"voice"` for reviewed transcripts); drained on next heartbeat |

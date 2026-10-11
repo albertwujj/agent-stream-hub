@@ -71,12 +71,15 @@ const MIME = {
  * voice-origin text with the guide reference (voice.md). lastViewedAt is
  * bumped by the detail-view endpoints (/latest, /history) and relayed to
  * the source as an age so it can pace its heartbeat by viewer presence.
+ * touchedAt is the source's report (its own clock) of when the session last
+ * drew the user; the viewer orders a machine's sessions by it.
  * @type {Map<string, {
  *   meta: object,
  *   ring: Array<{seq:number, ts:number, payload:any}>,
  *   lastSeen: number,
  *   lastViewedAt: number,
  *   isWorking: boolean,
+ *   touchedAt: number|null,
  *   inputs: string[],
  *   voiceInputs: string[],
  * }>}
@@ -402,7 +405,7 @@ async function handle(req, res) {
       existing.lastSeen = now;
     } else {
       if (runs.size >= MAX_RUNS) return send(res, 503, 'run capacity reached\n');
-      runs.set(meta.runId, { meta, ring: [], ringBytes: 0, lastSeen: now, lastViewedAt: 0, isWorking: false, inputs: [], voiceInputs: [], inputBytes: 0 });
+      runs.set(meta.runId, { meta, ring: [], ringBytes: 0, lastSeen: now, lastViewedAt: 0, isWorking: false, touchedAt: null, inputs: [], voiceInputs: [], inputBytes: 0 });
     }
     return noContent(res);
   }
@@ -411,7 +414,7 @@ async function handle(req, res) {
   if (req.method === 'GET' && path === '/runs') {
     const list = [];
     for (const r of runs.values()) {
-      list.push({ ...r.meta, lastSeenAt: r.lastSeen, isWorking: !!r.isWorking });
+      list.push({ ...r.meta, lastSeenAt: r.lastSeen, isWorking: !!r.isWorking, touchedAt: r.touchedAt });
     }
     return ok(res, { runs: list });
   }
@@ -429,8 +432,8 @@ async function handle(req, res) {
       return noContent(res);
     }
 
-    // POST /runs/:id/heartbeat — carries the source's current isWorking flag.
-    // Response drains any queued viewer inputs.
+    // POST /runs/:id/heartbeat — carries the source's current isWorking flag
+    // and touchedAt. Response drains any queued viewer inputs.
     if (req.method === 'POST' && rest === 'heartbeat') {
       const r = runs.get(runId);
       if (!r) return notFound(res);
@@ -438,6 +441,7 @@ async function handle(req, res) {
       try { body = JSON.parse(await readBody(req)); } catch { return badRequest(res, 'invalid json'); }
       if (!body || typeof body !== 'object' || Array.isArray(body)) return badRequest(res, 'invalid heartbeat');
       if (typeof body.isWorking === 'boolean') r.isWorking = body.isWorking;
+      if (Number.isFinite(body.touchedAt)) r.touchedAt = body.touchedAt;
       r.lastSeen = Date.now();
       const inputs = r.inputs;
       r.inputs = [];
